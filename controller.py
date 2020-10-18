@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 from functools import partial
 from enum import Enum
-from multiprocessing import Process
+import threading
 
 from PyQt5 import QtCore
 from PyQt5.QtCore import QDir
@@ -144,48 +144,49 @@ class ClientCtrl(QtCore.QObject):
         self.view.localFileView.setRootIndex(self.model.localFileModel.setRootPath(self.local_cur_path))
 
     def thread_upload(self, resume=False):
-        local_file = self.model.localFileModel.filePath(self.view.localFileView.selectedIndexes()[0])
-        remote_file = os.path.join(self.remote_cur_path, local_file.split('/')[-1])
-        size = os.path.getsize(local_file)
+        with threading.Lock():
+            local_file = self.model.localFileModel.filePath(self.view.localFileView.selectedIndexes()[0])
+            remote_file = os.path.join(self.remote_cur_path, local_file.split('/')[-1])
+            size = os.path.getsize(local_file)
 
-        hash = local_file + '->' + remote_file + "_" + str(size)
-        offset = 0
-        if hash in self.running_proc:
-            if self.running_proc[hash].status == TransferStatus.Running:
-                self.push_response("system: 5 a transfer has been built for this transfer, please pause it first.")
-                return
+            hash = local_file + '->' + remote_file + "_" + str(size)
+            offset = 0
+            if hash in self.running_proc:
+                if self.running_proc[hash].status == TransferStatus.Running:
+                    self.push_response("system: 5 a transfer has been built for this transfer, please pause it first.")
+                    return
 
-            if resume:
-                offset = self.running_proc[hash].trans_size
-        else:
-            self.running_proc[hash] = TransferProcess(local_file, remote_file, download=False, total_size=size, start_time=datetime.now())
+                if resume:
+                    offset = self.running_proc[hash].trans_size
+            else:
+                self.running_proc[hash] = TransferProcess(local_file, remote_file, download=False, total_size=size, start_time=datetime.now())
 
-        self.push_response(self.model.type('I'))
-        if self.mode == ClientMode.PORT:
-            self.push_response(self.model.port())
-        else:
-            self.push_response(self.model.pasv())
+            self.push_response(self.model.type('I'))
+            if self.mode == ClientMode.PORT:
+                self.push_response(self.model.port())
+            else:
+                self.push_response(self.model.pasv())
 
-        fp = open(local_file, 'rb')
+            fp = open(local_file, 'rb')
 
-        if offset > 0:
-            fp.seek(offset)
-            self.push_response(self.model.rest(offset))
+            if offset > 0:
+                fp.seek(offset)
+                self.push_response(self.model.rest(offset))
 
-        def record_process(buf):
-            fp.read(buf)
-            self.running_proc[hash].trans_size += len(buf)
-            # TODO: update view
+            def record_process(buf):
+                fp.read(buf)
+                self.running_proc[hash].trans_size += buf
+                # TODO: update view
 
-        self.push_response(self.model.stor(local_file.split('/')[-1], record_process))
-        self.finish_process(hash)
+            self.push_response(self.model.stor(local_file.split('/')[-1], record_process))
+            self.finish_process(hash)
 
-        # update view
-        self.update_remote_site()
+            # update view
+            self.update_remote_site()
 
     def upload(self, resume=False):
-        p = Process(target=self.thread_upload, args=(resume, ))
-        p.start()
+        t = threading.Thread(target=self.thread_upload, args=(resume, ))
+        t.start()
 
     def update_remote_site(self):
         if self.mode == ClientMode.PORT:
@@ -239,49 +240,49 @@ class ClientCtrl(QtCore.QObject):
         self.update_remote_site()
 
     def thread_download(self, resume=False):
-        item = self.view.remoteFileWidget.currentItem()
-        filename = item.text(FileHeader.Name.value)
+        with threading.Lock():
+            item = self.view.remoteFileWidget.currentItem()
+            filename = item.text(FileHeader.Name.value)
 
-        local_file = os.path.join(self.local_cur_path, filename)
-        remote_file = os.path.join(self.remote_cur_path, filename)
-        size = self.remote_file_size[filename] if filename in self.remote_file_size else 0
+            local_file = os.path.join(self.local_cur_path, filename)
+            remote_file = os.path.join(self.remote_cur_path, filename)
+            size = self.remote_file_size[filename] if filename in self.remote_file_size else 0
 
-        hash = local_file + '<-' + remote_file + "_" + size
-        offset = 0
-        if hash in self.running_proc:
-            if self.running_proc[hash].status == TransferStatus.Running:
-                self.push_response("system: 5 a transfer has been built for this transfer, please pause it first.")
-                return
+            hash = local_file + '<-' + remote_file + "_" + size
+            offset = 0
+            if hash in self.running_proc:
+                if self.running_proc[hash].status == TransferStatus.Running:
+                    self.push_response("system: 5 a transfer has been built for this transfer, please pause it first.")
+                    return
 
-            if resume:
-                offset = self.running_proc[hash].trans_size
-        else:
-            self.running_proc[hash] = TransferProcess(local_file, remote_file, download=True, total_size=size, start_time=datetime.now())
+                if resume:
+                    offset = self.running_proc[hash].trans_size
+            else:
+                self.running_proc[hash] = TransferProcess(local_file, remote_file, download=True, total_size=size, start_time=datetime.now())
 
-        self.push_response(self.model.type('I'))
-        if self.mode == ClientMode.PORT:
-            self.push_response(self.model.port())
-        else:
-            self.push_response(self.model.pasv())
+            self.push_response(self.model.type('I'))
+            if self.mode == ClientMode.PORT:
+                self.push_response(self.model.port())
+            else:
+                self.push_response(self.model.pasv())
 
-        fp = open(local_file, 'wb')
+            fp = open(local_file, 'wb')
 
-        if offset > 0:
-            fp.seek(offset)
-            self.push_response(self.model.rest(offset))
+            if offset > 0:
+                fp.seek(offset)
+                self.push_response(self.model.rest(offset))
 
-        def record_process(buf):
-            fp.write(buf)
-            self.running_proc[hash].trans_size += len(buf)
-            # TODO: update view
+            def record_process(buf):
+                fp.write(buf)
+                self.running_proc[hash].trans_size += len(buf)
+                # TODO: update view
 
-        self.push_response(self.model.retr(filename, record_process))
-        self.finish_process(hash)
-
+            self.push_response(self.model.retr(filename, record_process))
+            self.finish_process(hash)
 
     def download(self, resume=False):
-        p = Process(target=self.thread_download, args=(resume, ))
-        p.start()
+        t = threading.Thread(target=self.thread_download, args=(resume, ))
+        t.start()
 
     def remote_delete(self):
         item = self.view.remoteFileWidget.currentItem()
