@@ -74,7 +74,7 @@
      </layout>
     </item>
     <item>
-     <widget class="QTableWidget" name="responses"/>
+     <widget class="QTextBrowser" name="responses"/>
     </item>
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout_4">
