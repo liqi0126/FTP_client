@@ -98,8 +98,8 @@ class ClientModel(QObject):
         self.status = ClientStatus.PASS
         return self.send_command("PASS", password)
 
-    def type(self):
-        return self.send_command("TYPE")
+    def type(self, data_type):
+        return self.send_command("TYPE", data_type)
 
     def mkd(self, dir_name):
         return self.send_command("MKD", dir_name)
@@ -112,6 +112,9 @@ class ClientModel(QObject):
 
     def rmd(self, dir_name):
         return self.send_command("RMD", dir_name)
+
+    def dele(self, filename):
+        return self.send_command("DELE", filename)
 
     def pwd(self):
         response = self.send_command("PWD")

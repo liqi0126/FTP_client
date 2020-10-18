@@ -1,3 +1,4 @@
+import os
 from functools import partial
 from enum import Enum
 
@@ -11,6 +12,10 @@ from view import FileHeader
 class ClientMode(Enum):
     PORT = 0
     PASV = 1
+
+class FileType(Enum):
+    File = 'File'
+    Folder = 'Folder'
 
 
 class ClientCtrl(QtCore.QObject):
@@ -112,14 +117,14 @@ class ClientCtrl(QtCore.QObject):
 
                 QBtn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
 
-                self.newDirEdit = QLineEdit()
+                self.lineEdit = QLineEdit()
 
                 self.buttonBox = QDialogButtonBox(QBtn)
                 self.buttonBox.accepted.connect(self.accept)
                 self.buttonBox.rejected.connect(self.reject)
 
                 self.layout = QVBoxLayout()
-                self.layout.addWidget(self.newDirEdit)
+                self.layout.addWidget(self.lineEdit)
                 self.layout.addWidget(self.buttonBox)
                 self.setLayout(self.layout)
 
@@ -127,14 +132,68 @@ class ClientCtrl(QtCore.QObject):
         if not dlg.exec_():
             return
 
-        new_dir_name = dlg.newDirEdit.text()
+        new_dir_name = dlg.lineEdit.text()
         response = self.model.mkd(new_dir_name)
         self.push_responses(response)
         self.update_remote_site()
 
     def download(self):
         item = self.view.remoteFileWidget.currentItem()
-        item.text(FileHeader.Name.value)
+        filename = item.text(FileHeader.Name.value)
+
+        self.model.type('I')
+        if self.mode == ClientMode.PORT:
+            self.model.port()
+        else:
+            self.model.pasv()
+
+        fp = open(os.path.join(self.local_cur_path, filename), 'wb')
+        response = self.model.port(filename, fp.write)
+        self.push_responses(response)
+
+    def remote_delete(self):
+        item = self.view.remoteFileWidget.currentItem()
+        name = item.text(FileHeader.Name.value)
+        if item.text(FileHeader.Type.value) == FileType.Folder.value:
+            response = self.model.rmd(name)
+        else:
+            response = self.model.dele(name)
+        return response
+
+    def remote_rename(self):
+        class RemoteReNameDialog(QDialog):
+            def __init__(self):
+                super(RemoteReNameDialog, self).__init__()
+
+                self.setWindowTitle("Please Enter New Name")
+                self.setFixedWidth(400)
+
+                QBtn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+
+                self.lineEdit = QLineEdit()
+
+                self.buttonBox = QDialogButtonBox(QBtn)
+                self.buttonBox.accepted.connect(self.accept)
+                self.buttonBox.rejected.connect(self.reject)
+
+                self.layout = QVBoxLayout()
+                self.layout.addWidget(self.lineEdit)
+                self.layout.addWidget(self.buttonBox)
+                self.setLayout(self.layout)
+
+        item = self.view.remoteFileWidget.currentItem()
+        old_name = item.text(FileHeader.Name.value)
+
+        dlg = RemoteReNameDialog()
+        if not dlg.exec_():
+            return
+
+        new_name = dlg.lineEdit.text()
+
+        self.push_responses(self.model.rnfr(old_name))
+        self.push_responses(self.model.rnto(new_name))
+        self.update_remote_site()
+
 
     # help functions
     def push_response(self, response):
@@ -159,7 +218,7 @@ class ClientCtrl(QtCore.QObject):
         size = lists[4]
         last_modified = ' '.join(lists[5:8])
         filename = lists[8]
-        file_type = 'Folder' if mode[0] == 'd' else 'File'
+        file_type = FileType.Folder.value if mode[0] == 'd' else FileType.File.value
         return filename, size, file_type, last_modified, mode, owner
 
     @staticmethod
