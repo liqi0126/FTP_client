@@ -1,5 +1,16 @@
+from enum import Enum
+
 from PyQt5.QtWidgets import QMainWindow, QTreeWidgetItem
 from PyQt5.uic import loadUi
+
+
+class FileHeader(Enum):
+    Name = 0
+    Size = 1
+    Type = 2
+    LastMod = 3
+    Mode = 4
+    Owner = 5
 
 
 class ClientUI(QMainWindow):

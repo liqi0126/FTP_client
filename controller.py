@@ -6,11 +6,12 @@ from PyQt5.QtCore import QDir
 from PyQt5.QtWidgets import *
 
 from model import SYSTEM_HEADER
-
+from view import FileHeader
 
 class ClientMode(Enum):
     PORT = 0
     PASV = 1
+
 
 class ClientCtrl(QtCore.QObject):
     def __init__(self, model, view):
@@ -34,6 +35,7 @@ class ClientCtrl(QtCore.QObject):
         self.view.exit.clicked.connect(self.exit)
         self.view.remoteSiteBtn.clicked.connect(self.change_remote_site)
         self.view.remoteCreateDir.clicked.connect(self.create_remote_dir)
+        self.view.download.clicked.connect(self.download)
 
     def login(self):
         host = self.view.host.text()
@@ -130,7 +132,9 @@ class ClientCtrl(QtCore.QObject):
         self.push_responses(response)
         self.update_remote_site()
 
-
+    def download(self):
+        item = self.view.remoteFileWidget.currentItem()
+        item.text(FileHeader.Name.value)
 
     # help functions
     def push_response(self, response):
