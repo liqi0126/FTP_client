@@ -1,4 +1,4 @@
-from socket import *
+import socket
 from enum import Enum
 
 import os
@@ -74,9 +74,9 @@ class ClientModel(object):
         if not self.is_valid_ipv4_by_ip_and_port(ip, port):
             return SYSTEM_HEADER + "5 invalid ip address."
 
-        self.command_socket = socket(AF_INET, SOCK_STREAM)
+        self.command_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            self.command_socket = create_connection((ip, int(port)))
+            self.command_socket = socket.create_connection((ip, int(port)))
         except ConnectionRefusedError:
             return SYSTEM_HEADER + "5 fail to connect target computer."
         self.command_recevier = self.command_socket.makefile('r')
@@ -128,10 +128,10 @@ class ClientModel(object):
 
     def port(self):
         self.file_socket = None
-        for res in getaddrinfo(None, 0, self.command_socket.family, SOCK_STREAM, 0, AI_PASSIVE):
+        for res in socket.getaddrinfo(None, 0, self.command_socket.family, socket.SOCK_STREAM, 0, socket.AI_PASSIVE):
             af, socktype, proto, canonname, sa = res
             try:
-                self.file_socket = socket(af, socktype, proto)
+                self.file_socket = socket.socket(af, socktype, proto)
                 self.file_socket.bind(sa)
             except OSError as _:
                 if self.file_socket:
@@ -147,188 +147,96 @@ class ClientModel(object):
         port = self.file_socket.getsockname()[1]  # Get proper port
         ip = self.command_socket.getsockname()[0]  # Get proper ip
 
-        # port = int(port)
         addr = self.ip_and_port_to_addr(ip, port)
-        # self.file_socket = socket(AF_INET, SOCK_STREAM)
-        # self.file_socket.bind((ip, port))
-        # self.file_socket.listen(BACKLOG)
         response = self.send_command("PORT", addr)
         self.status = ClientStatus.PORT
         return response
 
     def pasv(self):
         response = self.send_command("PASV")
+        if self.get_status_code(response)[0] == '5':
+            return response
         addr = re.search(r"\d{1,3},\d{1,3},\d{1,3},\d{1,3},\d{1,3},\d{1,3}", response).group()
         if not self.is_valid_ipv4_by_addr(addr):
             return SYSTEM_HEADER + "5 invalid ip address."
         ip, port = self.addr_to_ip_and_port(addr)
         self.file_ip = ip
         self.file_port = port
-        self.file_socket = socket(AF_INET, SOCK_STREAM)
         self.status = ClientStatus.PASV
         return response
 
-    def retr_port(self, filename):
-        responses = []
-
-        msg = "RETR " + filename + CRLF
+    def build_transfer_sock(self, msg):
         self.command_socket.send(msg.encode())
-        socket, _ = self.file_socket.accept()
+        if self.status == ClientStatus.PORT:
+            sock, _ = self.file_socket.accept()
+            self.file_socket.close()
+            self.file_socket = None
+        elif self.status == ClientStatus.PASS:
+            sock = socket.create_connection((self.file_ip, self.file_port))
+        else:
+            raise RuntimeError
         response = SERVER_HEADER + self.recv_response()
-        responses.append(response)
-
-        if response[0] != '5':
-            file_path = os.path.join(self.cur_path, filename)
-            self.recv_data(socket, file_path, self.offset)
-            response = SERVER_HEADER + self.recv_response()
-            responses.append(response)
-
-        socket.close()
-        self.file_socket.close()
-        self.file_socket = None
-        return responses
-
-    def retr_pasv(self, filename):
-        responses = []
-
-        msg = "RETR " + filename + CRLF
-        self.command_socket.send(msg.encode())
-        self.file_socket.connect((self.file_ip, self.file_port))
-        response = SERVER_HEADER + str(self.command_socket.recv(BUF_SIZE))
-        responses.append(response)
-
-        if response[0] != '5':
-            file_path = os.path.join(self.cur_path, filename)
-            self.recv_data(self.file_socket, file_path, self.offset)
-            response = SERVER_HEADER + str(self.command_socket.recv(BUF_SIZE))
-            responses.append(response)
-
-        self.file_socket.close()
-        self.file_socket = None
-        return responses
+        return sock, response
 
     def retr(self, filename):
-        if self.status == ClientStatus.PORT:
-            response = self.retr_port(filename)
-        elif self.status == ClientStatus.PASV:
-            response = self.retr_pasv(filename)
-        else:
+        if client.status != ClientStatus.PASV and client.status != ClientStatus.PORT:
             return SYSTEM_HEADER + "5 RETR require PORT/PASV mode."
+
+        msg = "RETR " + filename + CRLF
+        sock, response = self.build_transfer_sock(msg)
+
+        if response[0] != 5:
+            file_path = os.path.join(self.cur_path, filename)
+            self.recv_data(sock, file_path, self.offset)
+            sock.close()
+            response += SERVER_HEADER + self.recv_response()
         self.offset = 0
         self.status = ClientStatus.PASS
         return response
 
-    def list_port(self):
-        list_str = b''
-        responses = []
-
-        msg = "LIST" + CRLF
-        self.command_socket.send(msg.encode())
-        socket, _ = self.file_socket.accept()
-        response = SERVER_HEADER + str(self.command_socket.recv(BUF_SIZE).decode())
-        responses.append(response)
-
-        if response[0] != '5':
-            buf = socket.recv(BUF_SIZE)
-            while buf:
-                list_str += buf
-                buf = socket.recv(BUF_SIZE)
-            response = SERVER_HEADER + str(self.command_socket.recv(BUF_SIZE))
-            responses.append(response)
-
-        socket.close()
-        self.file_socket.close()
-        self.file_socket = None
-        return responses, list_str.decode()
-
-    def list_pasv(self):
-        list_str = b''
-        responses = []
-
-        msg = "LIST" + CRLF
-        self.command_socket.send(msg.encode())
-        self.file_socket.connect((self.file_ip, self.file_port))
-        response = SERVER_HEADER + str(self.command_socket.recv(BUF_SIZE))
-        responses.append(response)
-
-        if response[0] != '5':
-            buf = self.file_socket.recv(BUF_SIZE)
-            while buf:
-                list_str += buf
-                buf = self.file_socket.recv(BUF_SIZE)
-            response = SERVER_HEADER + str(self.command_socket.recv(BUF_SIZE))
-            responses.append(response)
-
-        self.file_socket.close()
-        self.file_socket = None
-        return responses, list_str.decode()
-
     def list(self):
-        if self.status == ClientStatus.PORT:
-            response, list_str = self.list_port()
-        elif self.status == ClientStatus.PASV:
-            response, list_str = self.list_pasv()
-        else:
+        if client.status != ClientStatus.PASV and client.status != ClientStatus.PORT:
             return SYSTEM_HEADER + "5 LIST require PORT/PASV mode.", ""
-        self.status = ClientStatus.PASS
-        return response, list_str
 
-    def stor_port(self, filename):
-        file_path = os.path.join(self.cur_path, filename)
+        list_str = b''
 
-        if not os.path.isfile(file_path):
-            return SYSTEM_HEADER + "5 not such file"
-
-        responses = []
-
-        msg = "STOR " + filename + CRLF
-        self.command_socket.send(msg.encode())
-        socket, _ = self.file_socket.accept()
-        response = SERVER_HEADER + str(self.command_socket.recv(BUF_SIZE))
-        responses.append(response)
+        msg = "LIST" + CRLF
+        sock, response = self.build_transfer_sock(msg)
 
         if response[0] != '5':
-            self.send_data(socket, file_path, self.offset)
-            response = SERVER_HEADER + str(self.command_socket.recv(BUF_SIZE))
-            responses.append(response)
+            buf = sock.recv(BUF_SIZE)
+            while buf:
+                list_str += buf
+                buf = sock.recv(BUF_SIZE)
+            sock.close()
+            response += SERVER_HEADER + self.recv_response()
 
-        socket.close()
-        self.file_socket.close()
-        self.file_socket = None
-        return responses
+        return response, list_str.decode()
 
-    def stor_pasv(self, filename):
+    def stor(self, filename):
+        if client.status != ClientStatus.PASV and client.status != ClientStatus.PORT:
+            return SYSTEM_HEADER + "5 STOR require PORT/PASV mode."
+
         file_path = os.path.join(self.cur_path, filename)
 
         if not os.path.isfile(file_path):
             return SYSTEM_HEADER + "5 not such file."
 
-        responses = []
         msg = "STOR " + filename + CRLF
-        self.command_socket.send(msg.encode())
-        self.file_socket.connect((self.file_ip, self.file_port))
-        response = SERVER_HEADER + str(self.command_socket.recv(BUF_SIZE))
-        responses.append(response)
+        sock, response = self.build_transfer_sock(msg)
 
         if response[0] != '5':
-            self.send_data(socket, file_path, self.offset)
-            response = SERVER_HEADER + str(self.command_socket.recv(BUF_SIZE))
-            responses.append(response)
+            self.send_data(sock, file_path, self.offset)
+            sock.close()
+            response += SERVER_HEADER + self.recv_response()
 
-        self.file_socket.close()
-        self.file_socket = None
-        return responses
-
-    def stor(self, filename):
-        if self.status == ClientStatus.PORT:
-            response = self.stor_port(filename)
-        elif self.status == ClientStatus.PASV:
-            response = self.stor_pasv(filename)
-        else:
-            return SYSTEM_HEADER + "5 STOR require PORT/PASV mode."
         self.offset = 0
         self.status = ClientStatus.PASS
         return response
+
+    @staticmethod
+    def get_status_code(response):
+        return response.split(' ')[1]
 
     # help functions
     @staticmethod
@@ -369,7 +277,6 @@ class ClientModel(object):
 
     @staticmethod
     def recv_data(sock, file_path, offset):
-
         if offset > 0:
             fp = open(file_path, "r+b")
             fp.seek(offset-1, 0)
@@ -390,16 +297,18 @@ class ClientModel(object):
 
         buf = fp.read(BUF_SIZE)
         while buf:
-            sock.send(buf)
-            fp.read(BUF_SIZE)
+            sock.sendall(buf)
+            buf = fp.read(BUF_SIZE)
 
 
 def test_login(ftp, client):
-    fr1 = ftp.connect("209.51.188.20", 21)
+    # fr1 = ftp.connect("209.51.188.20", 21)
+    fr1 = ftp.connect("127.0.0.1", 20000)
     fr2 = ftp.sendcmd("USER anonymous")
     fr3 = ftp.sendcmd("PASS anonymous@")
 
-    cr1 = client.connect("209.51.188.20", 21)
+    # cr1 = client.connect("209.51.188.20", 21)
+    cr1 = client.connect("127.0.0.1", 20000)
     cr2 = client.send_command("USER anonymous")
     cr3 = client.send_command("PASS anonymous@")
 
@@ -429,9 +338,31 @@ def test_file_retr(ftp, client, filename):
     assert filecmp.cmp("ftp_retr", filename)
     os.remove(filename)
 
+    os.remove("ftp_retr")
+
 
 def test_file_stor(ftp, client, filename):
-    pass
+    import filecmp
+
+    client.send_command("TYPE I")
+    client.port()
+    client.stor(filename)
+
+    ftp.retrbinary(f"RETR {filename}", open("ftp_retr", 'wb').write)
+    assert filecmp.cmp("ftp_retr", filename)
+
+    ftp.delete(filename)
+    os.remove("ftp_retr")
+
+    client.send_command("TYPE I")
+    client.pasv()
+    client.stor(filename)
+
+    ftp.retrbinary(f"RETR {filename}", open("ftp_retr", 'wb').write)
+    assert filecmp.cmp("ftp_retr", filename)
+
+    ftp.delete(filename)
+    os.remove("ftp_retr")
 
 
 if __name__ == '__main__':
@@ -442,12 +373,10 @@ if __name__ == '__main__':
 
     test_login(ftp, client)
 
-    # test_file_retr(ftp, client, "CRYPTO.README")
+    # test_file_retr(ftp, client, "temp.c")
 
-    print(ftp.dir())
-    ftp.mkd("temp")
-    # ftp.storbinary("STOR README.md", open("README.md", "rb"))
+    # test_file_stor(ftp, client, "README.md")
 
-    print()
-    print(ftp.dir())
-
+    client.send_command("TYPE I")
+    print(client.pasv())
+    # client.stor("README.md")
