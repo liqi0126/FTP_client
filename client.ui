@@ -6,15 +6,15 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1121</width>
-    <height>1029</height>
+    <width>1256</width>
+    <height>1117</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
   <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout_5">
+   <layout class="QVBoxLayout" name="verticalLayout_2">
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout">
       <item>
@@ -74,7 +74,14 @@
      </layout>
     </item>
     <item>
-     <widget class="QTextBrowser" name="responses"/>
+     <widget class="QTextBrowser" name="responses">
+      <property name="maximumSize">
+       <size>
+        <width>16777215</width>
+        <height>200</height>
+       </size>
+      </property>
+     </widget>
     </item>
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout_4">
@@ -93,7 +100,7 @@
            <widget class="QLineEdit" name="localSite"/>
           </item>
           <item>
-           <widget class="QPushButton" name="localSiteGo">
+           <widget class="QPushButton" name="localSiteBtn">
             <property name="text">
              <string>Go</string>
             </property>
@@ -101,52 +108,6 @@
           </item>
          </layout>
         </item>
-        <item>
-         <widget class="QTreeView" name="localDirView">
-          <property name="maximumSize">
-           <size>
-            <width>16777215</width>
-            <height>16777215</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <layout class="QVBoxLayout" name="verticalLayout_2">
-        <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_3">
-          <item>
-           <widget class="QLabel" name="label_6">
-            <property name="text">
-             <string>Remote site:</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLineEdit" name="remoteSite"/>
-          </item>
-          <item>
-           <widget class="QPushButton" name="remoteSiteGo">
-            <property name="text">
-             <string>Go</string>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </item>
-        <item>
-         <widget class="QTreeView" name="remoteDirView"/>
-        </item>
-       </layout>
-      </item>
-     </layout>
-    </item>
-    <item>
-     <layout class="QHBoxLayout" name="horizontalLayout_5">
-      <item>
-       <layout class="QVBoxLayout" name="verticalLayout_4">
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_7">
           <item>
@@ -187,26 +148,33 @@
          </layout>
         </item>
         <item>
-         <widget class="QTreeView" name="localFileView">
-          <property name="minimumSize">
-           <size>
-            <width>0</width>
-            <height>500</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="label_8">
-          <property name="text">
-           <string/>
-          </property>
-         </widget>
+         <widget class="QTreeView" name="localFileView"/>
         </item>
        </layout>
       </item>
       <item>
        <layout class="QVBoxLayout" name="verticalLayout_3">
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_3">
+          <item>
+           <widget class="QLabel" name="label_6">
+            <property name="text">
+             <string>Remote site:</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="remoteSite"/>
+          </item>
+          <item>
+           <widget class="QPushButton" name="remoteSiteBtn">
+            <property name="text">
+             <string>Go</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
         <item>
          <layout class="QHBoxLayout" name="horizontalLayout_6">
           <item>
@@ -247,13 +215,12 @@
          </layout>
         </item>
         <item>
-         <widget class="QTreeView" name="remoteFileView">
-          <property name="minimumSize">
-           <size>
-            <width>0</width>
-            <height>500</height>
-           </size>
-          </property>
+         <widget class="QTreeWidget" name="remoteFileWidget">
+          <column>
+           <property name="text">
+            <string notr="true">1</string>
+           </property>
+          </column>
          </widget>
         </item>
         <item>
@@ -267,6 +234,13 @@
       </item>
      </layout>
     </item>
+    <item>
+     <widget class="QLabel" name="label_8">
+      <property name="text">
+       <string/>
+      </property>
+     </widget>
+    </item>
    </layout>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -274,7 +248,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1121</width>
+     <width>1256</width>
      <height>26</height>
     </rect>
    </property>

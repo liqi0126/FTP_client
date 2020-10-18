@@ -1,8 +1,10 @@
+import os
+import re
 import socket
 from enum import Enum
 
-import os
-import re
+from PyQt5.QtWidgets import QFileSystemModel
+from PyQt5.QtCore import QObject
 
 BUF_SIZE = 8192
 BACKLOG = 5
@@ -10,6 +12,7 @@ BACKLOG = 5
 CRLF = '\r\n'
 SERVER_HEADER = 'server: '
 SYSTEM_HEADER = 'system: '
+
 
 class ClientStatus(Enum):
     DISCONNECT = 0
@@ -20,8 +23,10 @@ class ClientStatus(Enum):
     PASV = 5
 
 
-class ClientModel(object):
+class ClientModel(QObject):
     def __init__(self):
+        super(ClientModel, self).__init__()
+
         self.command_socket = None
         self.command_recevier = None
 
@@ -31,9 +36,10 @@ class ClientModel(object):
         self.file_ip = None
         self.file_port = None
 
-        self.cur_path = os.path.dirname(os.path.abspath(__file__))
-
         self.offset = 0
+
+        # local file system
+        self.localFileModel = QFileSystemModel(self)
 
     # help functions to communicate with server
     def push_command(self, command, argu):
@@ -108,10 +114,12 @@ class ClientModel(object):
         return self.send_command("RMD", dir_name)
 
     def pwd(self):
-        return self.send_command("PWD")
+        response = self.send_command("PWD")
+        path = re.search(r"\".*\"", response).group()[1:-1]
+        return response, path
 
-    def cwd(self):
-        return self.send_command("CWD")
+    def cwd(self, dir_name):
+        return self.send_command("CWD", dir_name)
 
     def syst(self):
         return self.send_command("SYST")
@@ -179,7 +187,7 @@ class ClientModel(object):
         return sock, response
 
     def retr(self, filename):
-        if client.status != ClientStatus.PASV and client.status != ClientStatus.PORT:
+        if self.status != ClientStatus.PASV and self.status != ClientStatus.PORT:
             return SYSTEM_HEADER + "5 RETR require PORT/PASV mode."
 
         msg = "RETR " + filename + CRLF
@@ -195,7 +203,7 @@ class ClientModel(object):
         return response
 
     def list(self):
-        if client.status != ClientStatus.PASV and client.status != ClientStatus.PORT:
+        if self.status != ClientStatus.PASV and self.status != ClientStatus.PORT:
             return SYSTEM_HEADER + "5 LIST require PORT/PASV mode.", ""
 
         list_str = b''
@@ -214,7 +222,7 @@ class ClientModel(object):
         return response, list_str.decode()
 
     def stor(self, filename):
-        if client.status != ClientStatus.PASV and client.status != ClientStatus.PORT:
+        if self.status != ClientStatus.PASV and self.status != ClientStatus.PORT:
             return SYSTEM_HEADER + "5 STOR require PORT/PASV mode."
 
         file_path = os.path.join(self.cur_path, filename)
@@ -254,9 +262,10 @@ class ClientModel(object):
                 return False
         return True
 
-    def is_valid_ipv4_by_ip_and_port(self, ip, port):
-        addr = self.ip_and_port_to_addr(ip, port)
-        return self.is_valid_ipv4_by_addr(addr)
+    @staticmethod
+    def is_valid_ipv4_by_ip_and_port(ip, port):
+        addr = ClientModel.ip_and_port_to_addr(ip, port)
+        return ClientModel.is_valid_ipv4_by_addr(addr)
 
     @staticmethod
     def addr_to_ip_and_port(addr):
@@ -302,13 +311,13 @@ class ClientModel(object):
 
 
 def test_login(ftp, client):
-    # fr1 = ftp.connect("209.51.188.20", 21)
-    fr1 = ftp.connect("127.0.0.1", 20000)
+    fr1 = ftp.connect("209.51.188.20", 21)
+    # fr1 = ftp.connect("127.0.0.1", 20000)
     fr2 = ftp.sendcmd("USER anonymous")
     fr3 = ftp.sendcmd("PASS anonymous@")
 
-    # cr1 = client.connect("209.51.188.20", 21)
-    cr1 = client.connect("127.0.0.1", 20000)
+    cr1 = client.connect("209.51.188.20", 21)
+    # cr1 = client.connect("127.0.0.1", 20000)
     cr2 = client.send_command("USER anonymous")
     cr3 = client.send_command("PASS anonymous@")
 
@@ -381,7 +390,12 @@ if __name__ == '__main__':
     client = ClientModel()
 
     test_login(ftp, client)
-    test_file_retr(ftp, client, "temp.c")
-    test_file_stor(ftp, client, "README.md")
-    test_list_dir(ftp, client)
+    # test_file_retr(ftp, client, "temp.c")
+    # test_file_stor(ftp, client, "README.md")
+    # test_list_dir(ftp, client)
 
+    # ftp.retrbinary("LIST", print)
+
+    pwd = client.pwd()
+    print(pwd)
+    print()

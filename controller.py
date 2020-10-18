@@ -1,14 +1,18 @@
-from PyQt5 import QtCore
-from PyQt5.QtWidgets import QFileSystemModel, QTableWidgetItem
+from functools import partial
+from enum import Enum
 
-from PyQt5.QtCore import QAbstractTableModel
+from PyQt5 import QtCore
+from PyQt5.QtCore import QDir
+from PyQt5.QtWidgets import *
 
 from model import SYSTEM_HEADER
 
 
-class ResponseModel(QAbstractTableModel):
-    def __init__(self, *args, **kwargs):
-        super(ResponseModel, self).__init__(*args, **kwargs)
+class ClientMode(Enum):
+    PORT = 0
+    PASV = 1
+
+
 
 
 class ClientCtrl(QtCore.QObject):
@@ -17,52 +21,22 @@ class ClientCtrl(QtCore.QObject):
         self.model = model
         self.view = view
 
-        # DEBUG
-        self.view.host.setText("209.51.188.20")
-        self.view.username.setText("anonymous")
-        self.view.password.setText("anonymous@")
-        self.view.port.setText("21")
+        self.mode = ClientMode.PORT
 
-        self.connect_signals()
+        self.local_root_path = QDir.rootPath()
+        self.local_cur_path = self.local_root_path
+        self.remote_cur_path = '/'
 
-    @staticmethod
-    def get_status_code(msg):
-        return msg.split(' ')[1]
+        # local path system
+        self.view.localSite.setText(self.local_root_path)
+        self.model.localFileModel.setRootPath(self.local_root_path)
+        self.view.localFileView.setModel(self.model.localFileModel)
 
-    def connect_signals(self):
-        # login and exit
+        # signal slots
         self.view.connect.clicked.connect(self.login)
         self.view.exit.clicked.connect(self.exit)
-
-        # local
-        self.view.localSiteGo.clicked.connect(self.change_local_site)
-        self.view.localCreateDir.clicked.connect(self.create_local_dir)
-        self.view.localCreateFile.clicked.connect(self.create_local_file)
-        self.view.localRename.clicked.connect(self.local_rename)
-        self.view.localDelete.clicked.connect(self.local_delete)
-
-        # remote
-        self.view.remoteSiteGo.clicked.connect(self.change_remote_site)
+        self.view.remoteSiteBtn.clicked.connect(self.change_remote_site)
         self.view.remoteCreateDir.clicked.connect(self.create_remote_dir)
-        self.view.remoteCreateFile.clicked.connect(self.create_remote_file)
-        self.view.remoteRename.clicked.connect(self.remote_rename)
-        self.view.remoteDelete.clicked.connect(self.remote_delete)
-
-        # upload and download
-        self.view.upload.clicked.connect(self.upload)
-        self.view.download.clicked.connect(self.download)
-
-    def push_response(self, response):
-        if not response.endswith('\n'):
-            response += '\n'
-        self.view.responses.insertPlainText(response)
-
-    def push_responses(self, responses):
-        if isinstance(responses, list):
-            for response in responses:
-                self.push_response(response)
-        else:
-            self.push_response(responses)
 
     def login(self):
         host = self.view.host.text()
@@ -101,53 +75,99 @@ class ClientCtrl(QtCore.QObject):
         response = self.model.password(password)
         self.push_responses(response)
 
+        response, path = self.model.pwd()
+        self.push_responses(response)
+        self.remote_cur_path = path
+        self.view.remoteSite.setText(self.remote_cur_path)
+        self.update_remote_site()
+
     def exit(self):
-        print('exit called')
-
-    def change_local_site(self):
         pass
 
-    def create_local_dir(self):
-        pass
+    def update_remote_site(self):
+        if self.mode == ClientMode.PORT:
+            self.model.port()
+        else:
+            self.model.pasv()
+        response, file_list = self.model.list()
+        self.push_responses(response)
 
-    def create_local_file(self):
-        pass
-
-    def upload(self):
-        pass
-
-    def local_rename(self):
-        pass
-
-    def local_delete(self):
-        pass
-
-    def delete_local_file(self):
-        pass
-
-    def delete_local_dir(self):
-        pass
+        files = self.parse_file_list(file_list)
+        self.view.update_remote_size(files)
 
     def change_remote_site(self):
-        pass
+        self.remote_cur_path = self.view.remoteSite.text()
+
+        response = self.model.cwd(self.remote_cur_path)
+        if self.get_status_code(response)[0] == '5':
+            return response
+        self.update_remote_site()
 
     def create_remote_dir(self):
-        pass
+        class RemoteDirDialog(QDialog):
+            def __init__(self):
+                super(RemoteDirDialog, self).__init__()
 
-    def create_remote_file(self):
-        pass
+                self.setWindowTitle("Please Enter Directory Name")
+                self.setFixedWidth(400)
 
-    def download(self):
-        pass
+                QBtn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
 
-    def remote_rename(self):
-        pass
+                self.newDirEdit = QLineEdit()
 
-    def remote_delete(self):
-        pass
+                self.buttonBox = QDialogButtonBox(QBtn)
+                self.buttonBox.accepted.connect(self.accept)
+                self.buttonBox.rejected.connect(self.reject)
 
-    def delete_remote_file(self):
-        pass
+                self.layout = QVBoxLayout()
+                self.layout.addWidget(self.newDirEdit)
+                self.layout.addWidget(self.buttonBox)
+                self.setLayout(self.layout)
 
-    def delete_remote_dir(self):
-        pass
+        dlg = RemoteDirDialog()
+        if not dlg.exec_():
+            return
+
+        new_dir_name = dlg.newDirEdit.text()
+        response = self.model.cwd(new_dir_name)
+        self.push_responses(response)
+        self.update_remote_site()
+
+
+
+    # help functions
+    def push_response(self, response):
+        if not response.endswith('\n'):
+            response += '\n'
+        self.view.responses.insertPlainText(response)
+
+    def push_responses(self, responses):
+        if isinstance(responses, list):
+            for response in responses:
+                self.push_response(response)
+        else:
+            self.push_response(responses)
+
+    @staticmethod
+    def parse_single_file_list(list):
+        lists = list.split()
+        mode = lists[0]
+        # link = lists[1]
+        owner = lists[2]
+        # group = lists[3]
+        size = lists[4]
+        last_modified = ' '.join(lists[5:8])
+        filename = lists[8]
+        file_type = 'Folder' if mode[0] == 'd' else 'File'
+        return filename, size, file_type, last_modified, mode, owner
+
+    @staticmethod
+    def get_status_code(msg):
+        return msg.split(' ')[1]
+
+    @staticmethod
+    def parse_file_list(file_list):
+        lists = []
+        for list in file_list.splitlines(keepends=False)[1:]:
+            lists.append(ClientCtrl.parse_single_file_list(list))
+        return lists
