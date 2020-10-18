@@ -171,7 +171,7 @@ class ClientModel(object):
             sock, _ = self.file_socket.accept()
             self.file_socket.close()
             self.file_socket = None
-        elif self.status == ClientStatus.PASS:
+        elif self.status == ClientStatus.PASV:
             sock = socket.create_connection((self.file_ip, self.file_port))
         else:
             raise RuntimeError
@@ -317,10 +317,6 @@ def test_login(ftp, client):
     assert fr3 == cr3[8:]
 
 
-def test_dir_manipulate(ftp, client):
-    pass
-
-
 def test_file_retr(ftp, client, filename):
     import filecmp
     ftp.retrbinary(f"RETR {filename}", open("ftp_retr", 'wb').write)
@@ -365,6 +361,19 @@ def test_file_stor(ftp, client, filename):
     os.remove("ftp_retr")
 
 
+def test_list_dir(ftp, client):
+    def set_ftp_list(list):
+        global ftp_list
+        ftp_list = list.decode()
+
+    ftp.retrbinary("LIST", set_ftp_list)
+
+    client.pasv()
+    _, list = client.list()
+
+    assert ftp_list == list
+
+
 if __name__ == '__main__':
     from ftplib import FTP
     ftp = FTP()
@@ -372,11 +381,7 @@ if __name__ == '__main__':
     client = ClientModel()
 
     test_login(ftp, client)
+    test_file_retr(ftp, client, "temp.c")
+    test_file_stor(ftp, client, "README.md")
+    test_list_dir(ftp, client)
 
-    # test_file_retr(ftp, client, "temp.c")
-
-    # test_file_stor(ftp, client, "README.md")
-
-    client.send_command("TYPE I")
-    print(client.pasv())
-    # client.stor("README.md")
