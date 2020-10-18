@@ -186,7 +186,7 @@ class ClientModel(QObject):
         response = SERVER_HEADER + self.recv_response()
         return sock, response
 
-    def retr(self, filename):
+    def retr(self, filename, callback):
         if self.status != ClientStatus.PASV and self.status != ClientStatus.PORT:
             return SYSTEM_HEADER + "5 RETR require PORT/PASV mode."
 
@@ -194,8 +194,7 @@ class ClientModel(QObject):
         sock, response = self.build_transfer_sock(msg)
 
         if response[0] != 5:
-            file_path = os.path.join(self.cur_path, filename)
-            self.recv_data(sock, file_path, self.offset)
+            self.recv_data(sock, callback)
             sock.close()
             response += SERVER_HEADER + self.recv_response()
         self.offset = 0
@@ -221,7 +220,7 @@ class ClientModel(QObject):
 
         return response, list_str.decode()
 
-    def stor(self, filename):
+    def stor(self, filename, callback=None):
         if self.status != ClientStatus.PASV and self.status != ClientStatus.PORT:
             return SYSTEM_HEADER + "5 STOR require PORT/PASV mode."
 
@@ -234,7 +233,7 @@ class ClientModel(QObject):
         sock, response = self.build_transfer_sock(msg)
 
         if response[0] != '5':
-            self.send_data(sock, file_path, self.offset)
+            self.send_data(sock, callback)
             sock.close()
             response += SERVER_HEADER + self.recv_response()
 
@@ -285,29 +284,32 @@ class ClientModel(QObject):
         return ','.join(addr)
 
     @staticmethod
-    def recv_data(sock, file_path, offset):
-        if offset > 0:
-            fp = open(file_path, "r+b")
-            fp.seek(offset-1, 0)
-        else:
-            fp = open(file_path, "wb")
+    def recv_data(sock, callback):
+        # if offset > 0:
+        #     fp = open(file_path, "r+b")
+        #     fp.seek(offset-1, 0)
+        # else:
+        #     fp = open(file_path, "wb")
+        if callback is None:
+            raise RuntimeError
 
         buf = sock.recv(BUF_SIZE)
         while buf:
-            fp.write(buf)
+            callback(buf)
             buf = sock.recv(BUF_SIZE)
 
     @staticmethod
-    def send_data(sock, file_path, offset):
-        fp = open(file_path, "rb")
+    def send_data(sock, callback):
+        # fp = open(file_path, "rb")
+        # if offset > 0:
+        #     fp.seek(offset-1, 0)
+        if callback is None:
+            raise RuntimeError
 
-        if offset > 0:
-            fp.seek(offset-1, 0)
-
-        buf = fp.read(BUF_SIZE)
+        buf = callback(BUF_SIZE)
         while buf:
             sock.sendall(buf)
-            buf = fp.read(BUF_SIZE)
+            buf = callback(BUF_SIZE)
 
 
 def test_login(ftp, client):
@@ -332,14 +334,14 @@ def test_file_retr(ftp, client, filename):
 
     client.send_command("TYPE I")
     client.port()
-    client.retr(filename)
+    client.retr(filename, open(filename, 'wb').write)
 
     assert filecmp.cmp("ftp_retr", filename)
     os.remove(filename)
 
     client.send_command("TYPE I")
     client.pasv()
-    client.retr(filename)
+    client.retr(filename, open(filename, 'wb').write)
     assert filecmp.cmp("ftp_retr", filename)
     os.remove(filename)
 
@@ -351,7 +353,7 @@ def test_file_stor(ftp, client, filename):
 
     client.send_command("TYPE I")
     client.port()
-    client.stor(filename)
+    client.stor(filename, open(filename, 'rb').read)
 
     ftp.retrbinary(f"RETR {filename}", open("ftp_retr", 'wb').write)
     assert filecmp.cmp("ftp_retr", filename)
@@ -361,7 +363,7 @@ def test_file_stor(ftp, client, filename):
 
     client.send_command("TYPE I")
     client.pasv()
-    client.stor(filename)
+    client.stor(filename, open(filename, 'rb').read)
 
     ftp.retrbinary(f"RETR {filename}", open("ftp_retr", 'wb').write)
     assert filecmp.cmp("ftp_retr", filename)
@@ -390,12 +392,12 @@ if __name__ == '__main__':
     client = ClientModel()
 
     test_login(ftp, client)
-    # test_file_retr(ftp, client, "temp.c")
-    # test_file_stor(ftp, client, "README.md")
-    # test_list_dir(ftp, client)
+    test_file_retr(ftp, client, "temp.c")
+    test_file_stor(ftp, client, "README.md")
+    test_list_dir(ftp, client)
 
     # ftp.retrbinary("LIST", print)
 
-    pwd = client.pwd()
-    print(pwd)
-    print()
+    # pwd = client.pwd()
+    # print(pwd)
+    # print()
