@@ -219,7 +219,7 @@ class ClientModel(QObject):
                 list_str += buf
                 buf = sock.recv(BUF_SIZE)
             sock.close()
-            response += SERVER_HEADER + self.recv_response()
+            response += "\n" + SERVER_HEADER + self.recv_response()
 
         return response, list_str.decode()
 
@@ -233,7 +233,7 @@ class ClientModel(QObject):
         if response[0] != '5':
             self.send_data(sock, callback)
             sock.close()
-            response += SERVER_HEADER + self.recv_response()
+            response += "\n" + SERVER_HEADER + self.recv_response()
 
         self.offset = 0
         self.status = ClientStatus.PASS

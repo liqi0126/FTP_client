@@ -26,20 +26,28 @@ class ClientCtrl(QtCore.QObject):
 
         self.mode = ClientMode.PORT
 
-        self.local_root_path = QDir.rootPath()
-        self.local_cur_path = self.local_root_path
+        self.local_cur_path = QDir.rootPath()
         self.remote_cur_path = '/'
 
         # local path system
-        self.view.localSite.setText(self.local_root_path)
-        self.model.localFileModel.setRootPath(self.local_root_path)
+        self.view.localSite.setText(self.local_cur_path)
+        self.model.localFileModel.setRootPath(self.local_cur_path)
         self.view.localFileView.setModel(self.model.localFileModel)
 
         # signal slots
         self.view.connect.clicked.connect(self.login)
         self.view.exit.clicked.connect(self.exit)
+
+        self.view.localFileView.selectionModel().selectionChanged.connect(self.sync_local_path)
+        self.view.localSiteBtn.clicked.connect(self.change_local_site)
+
+        self.view.remoteFileWidget.selectionModel().selectionChanged.connect(self.sync_remote_path)
+        self.view.remoteRename.clicked.connect(self.remote_rename)
+        self.view.remoteDelete.clicked.connect(self.remote_delete)
         self.view.remoteSiteBtn.clicked.connect(self.change_remote_site)
         self.view.remoteCreateDir.clicked.connect(self.create_remote_dir)
+
+        self.view.upload.clicked.connect(self.upload)
         self.view.download.clicked.connect(self.download)
 
     def login(self):
@@ -49,38 +57,38 @@ class ClientCtrl(QtCore.QObject):
         password = self.view.password.text()
 
         if not host:
-            self.push_responses(SYSTEM_HEADER + "5 please enter host to connect!")
+            self.push_response(SYSTEM_HEADER + "5 please enter host to connect!")
             return
 
         if not port:
-            self.push_responses(SYSTEM_HEADER + "5 please enter port to connect!")
+            self.push_response(SYSTEM_HEADER + "5 please enter port to connect!")
             return
 
         response = self.model.connect(host, port)
-        self.push_responses(response)
+        self.push_response(response)
 
         if self.get_status_code(response)[0] == '5':
             return
 
         if not username:
-            self.push_responses(SYSTEM_HEADER + "5 please enter username to login!")
+            self.push_response(SYSTEM_HEADER + "5 please enter username to login!")
             return
 
         response = self.model.user(username)
-        self.push_responses(response)
+        self.push_response(response)
 
         if self.get_status_code(response)[0] == '5':
             return
 
         if not password:
-            self.push_responses(SYSTEM_HEADER + "5 please enter password to login!")
+            self.push_response(SYSTEM_HEADER + "5 please enter password to login!")
             return
 
         response = self.model.password(password)
-        self.push_responses(response)
+        self.push_response(response)
 
         response, path = self.model.pwd()
-        self.push_responses(response)
+        self.push_response(response)
         self.remote_cur_path = path
         self.view.remoteSite.setText(self.remote_cur_path)
         self.update_remote_site()
@@ -88,13 +96,45 @@ class ClientCtrl(QtCore.QObject):
     def exit(self):
         pass
 
+    def sync_local_path(self):
+        selected_path = self.model.localFileModel.filePath(self.view.localFileView.selectedIndexes()[0])
+        self.view.localSite.setText(selected_path)
+
+    def sync_remote_path(self):
+        item = self.view.remoteFileWidget.currentItem()
+        filename = item.text(FileHeader.Name.value)
+        selected_path = os.path.join(self.remote_cur_path, filename)
+        self.view.remoteSite.setText(selected_path)
+
+    def change_local_site(self):
+        new_path = self.view.localSite.text()
+        if not os.path.isdir(new_path):
+            self.push_response("system: 5 invalid path.")
+            return
+
+        self.local_cur_path = new_path
+        self.view.localFileView.setRootIndex(self.model.localFileModel.setRootPath(self.local_cur_path))
+
+    def upload(self):
+        filepath = self.model.localFileModel.filePath(self.view.localFileView.selectedIndexes()[0])
+
+        self.push_response(self.model.type('I'))
+        if self.mode == ClientMode.PORT:
+            self.push_response(self.model.port())
+        else:
+            self.push_response(self.model.pasv())
+
+        fp = open(os.path.join(filepath), 'rb')
+        self.push_response(self.model.stor(filepath.split('/')[-1], fp.read))
+        self.update_remote_site()
+
     def update_remote_site(self):
         if self.mode == ClientMode.PORT:
-            self.model.port()
+            self.push_response(self.model.port())
         else:
-            self.model.pasv()
+            self.push_response(self.model.pasv())
         response, file_list = self.model.list()
-        self.push_responses(response)
+        self.push_response(response)
 
         files = self.parse_file_list(file_list)
         self.view.update_remote_size(files)
@@ -103,8 +143,9 @@ class ClientCtrl(QtCore.QObject):
         self.remote_cur_path = self.view.remoteSite.text()
 
         response = self.model.cwd(self.remote_cur_path)
+        self.push_response(response)
         if self.get_status_code(response)[0] == '5':
-            return response
+            return
         self.update_remote_site()
 
     def create_remote_dir(self):
@@ -134,7 +175,7 @@ class ClientCtrl(QtCore.QObject):
 
         new_dir_name = dlg.lineEdit.text()
         response = self.model.mkd(new_dir_name)
-        self.push_responses(response)
+        self.push_response(response)
         self.update_remote_site()
 
     def download(self):
@@ -148,8 +189,7 @@ class ClientCtrl(QtCore.QObject):
             self.model.pasv()
 
         fp = open(os.path.join(self.local_cur_path, filename), 'wb')
-        response = self.model.port(filename, fp.write)
-        self.push_responses(response)
+        self.push_response(self.model.retr(filename, fp.write))
 
     def remote_delete(self):
         item = self.view.remoteFileWidget.currentItem()
@@ -158,11 +198,12 @@ class ClientCtrl(QtCore.QObject):
             response = self.model.rmd(name)
         else:
             response = self.model.dele(name)
-        return response
+        self.push_response(response)
+        self.update_remote_site()
 
     def remote_rename(self):
         class RemoteReNameDialog(QDialog):
-            def __init__(self):
+            def __init__(self, old_name):
                 super(RemoteReNameDialog, self).__init__()
 
                 self.setWindowTitle("Please Enter New Name")
@@ -171,6 +212,7 @@ class ClientCtrl(QtCore.QObject):
                 QBtn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
 
                 self.lineEdit = QLineEdit()
+                self.lineEdit.setText(old_name)
 
                 self.buttonBox = QDialogButtonBox(QBtn)
                 self.buttonBox.accepted.connect(self.accept)
@@ -184,29 +226,21 @@ class ClientCtrl(QtCore.QObject):
         item = self.view.remoteFileWidget.currentItem()
         old_name = item.text(FileHeader.Name.value)
 
-        dlg = RemoteReNameDialog()
+        dlg = RemoteReNameDialog(old_name)
         if not dlg.exec_():
             return
 
         new_name = dlg.lineEdit.text()
 
-        self.push_responses(self.model.rnfr(old_name))
-        self.push_responses(self.model.rnto(new_name))
+        self.push_response(self.model.rnfr(old_name))
+        self.push_response(self.model.rnto(new_name))
         self.update_remote_site()
-
 
     # help functions
     def push_response(self, response):
         if not response.endswith('\n'):
             response += '\n'
         self.view.responses.insertPlainText(response)
-
-    def push_responses(self, responses):
-        if isinstance(responses, list):
-            for response in responses:
-                self.push_response(response)
-        else:
-            self.push_response(responses)
 
     @staticmethod
     def parse_single_file_list(list):

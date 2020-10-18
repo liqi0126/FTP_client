@@ -20,16 +20,18 @@ class ClientUI(QMainWindow):
         self.setWindowTitle("Simple Client")
 
         # quick DEBUG
-        self.host.setText("209.51.188.20")
+        # self.host.setText("209.51.188.20")
+        self.host.setText("127.0.0.1")
         self.username.setText("anonymous")
         self.password.setText("anonymous@")
-        self.port.setText("21")
+        # self.port.setText("21")
+        self.port.setText("20002")
+        self.localSite.setText("/Users/liqi17thu/Desktop")
 
         self.remoteFileWidget.setColumnCount(6)
         self.remoteFileWidget.setHeaderLabels(['Name', 'Size', 'Type', 'Last Modifed', 'Mode', 'Owner'])
 
     def update_remote_size(self, files):
         self.remoteFileWidget.clear()
-
         for file in files:
             self.remoteFileWidget.addTopLevelItem(QTreeWidgetItem(file))

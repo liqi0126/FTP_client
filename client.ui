@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1256</width>
-    <height>1117</height>
+    <height>1049</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -223,16 +223,24 @@
           </column>
          </widget>
         </item>
-        <item>
-         <widget class="QLabel" name="label_7">
-          <property name="text">
-           <string/>
-          </property>
-         </widget>
-        </item>
        </layout>
       </item>
      </layout>
+    </item>
+    <item>
+     <widget class="QTreeWidget" name="transferWidget">
+      <property name="maximumSize">
+       <size>
+        <width>16777215</width>
+        <height>300</height>
+       </size>
+      </property>
+      <column>
+       <property name="text">
+        <string notr="true">1</string>
+       </property>
+      </column>
+     </widget>
     </item>
     <item>
      <widget class="QLabel" name="label_8">
@@ -249,7 +257,7 @@
      <x>0</x>
      <y>0</y>
      <width>1256</width>
-     <height>26</height>
+     <height>22</height>
     </rect>
    </property>
   </widget>
