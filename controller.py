@@ -12,9 +12,6 @@ class ClientMode(Enum):
     PORT = 0
     PASV = 1
 
-
-
-
 class ClientCtrl(QtCore.QObject):
     def __init__(self, model, view):
         super(ClientCtrl, self).__init__(view)
@@ -129,7 +126,7 @@ class ClientCtrl(QtCore.QObject):
             return
 
         new_dir_name = dlg.newDirEdit.text()
-        response = self.model.cwd(new_dir_name)
+        response = self.model.mkd(new_dir_name)
         self.push_responses(response)
         self.update_remote_site()
 
