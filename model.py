@@ -36,8 +36,6 @@ class ClientModel(QObject):
         self.file_ip = None
         self.file_port = None
 
-        self.offset = 0
-
         # local file system
         self.localFileModel = QFileSystemModel(self)
 
@@ -128,7 +126,6 @@ class ClientModel(QObject):
         return self.send_command("SYST")
 
     def rest(self, offset):
-        self.offset = offset
         return self.send_command("REST", offset)
 
     def quit(self):
@@ -189,19 +186,25 @@ class ClientModel(QObject):
         response = SERVER_HEADER + self.recv_response()
         return sock, response
 
-    def retr(self, filename, callback):
+    def retr_setup(self, filename):
         if self.status != ClientStatus.PASV and self.status != ClientStatus.PORT:
-            return SYSTEM_HEADER + "5 RETR require PORT/PASV mode."
+            return None, SYSTEM_HEADER + "5 RETR require PORT/PASV mode."
 
         msg = "RETR " + filename + CRLF
-        sock, response = self.build_transfer_sock(msg)
+        return self.build_transfer_sock(msg)
 
-        if response[0] != 5:
-            self.recv_data(sock, callback)
-            sock.close()
-            response += SERVER_HEADER + self.recv_response()
+    def retr_transfer(self, sock, callback):
+        self.recv_data(sock, callback)
+        sock.close()
+        response = SERVER_HEADER + self.recv_response()
         self.offset = 0
         self.status = ClientStatus.PASS
+        return response
+
+    def retr(self, filename, callback):
+        sock, response = self.retr_setup(filename)
+        if response[0] != 5:
+            response += self.retr_transfer(sock, callback)
         return response
 
     def list(self):
