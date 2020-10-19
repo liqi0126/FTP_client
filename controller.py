@@ -150,31 +150,66 @@ class ClientCtrl(QtCore.QObject):
     def exit(self):
         pass
 
-    def sync_local_path(self):
-        selected_path = self.model.localFileModel.filePath(self.view.localFileView.selectedIndexes()[0])
-        self.view.localSite.setText(selected_path)
+    def thread_download(self, local_file, remote_file, size, resume=False):
+        with threading.Lock():
+            hash = local_file + '<-' + remote_file + "_" + str(size)
+            offset = 0
+            if hash in self.running_proc:
+                if self.running_proc[hash].status == TransferStatus.Running:
+                    self.push_response("system: 5 a transfer has been built for this transfer, please pause it first.")
+                    return
 
-    def sync_remote_path(self):
+                if resume:
+                    offset = self.running_proc[hash].trans_size
+                    self.running_proc[hash].status = TransferStatus.Running
+            else:
+                self.running_proc[hash] = TransferProcess(local_file, remote_file, download=True, total_size=size, start_time=datetime.now())
+
+            self.refresh_transfer_signal.emit()
+
+            self.push_response(self.model.type('I'))
+            if self.mode == ClientMode.PORT:
+                self.push_response(self.model.port())
+            else:
+                self.push_response(self.model.pasv())
+
+            if offset > 0:
+                fp = open(local_file, 'r+b')
+                fp.seek(offset)
+                self.push_response(self.model.rest(offset))
+            else:
+                fp = open(local_file, 'wb')
+
+            def do_download(buf):
+                if self.running_proc[hash].status == TransferStatus.Paused:
+                    fp.close()
+                    return
+
+                fp.write(buf)
+                self.running_proc[hash].trans_size += len(buf)
+                self.update_signal_transfer.emit(self.running_proc[hash])
+
+            self.push_response(self.model.retr(remote_file, do_download))
+            self.finish_process(hash)
+
+            self.refresh_transfer_signal.emit()
+
+    def download_file(self, local_file, remote_file, size, resume=False):
+        t = threading.Thread(target=self.thread_download, args=(local_file, remote_file, size, resume, ))
+        t.start()
+
+    def download(self):
         item = self.view.remoteFileWidget.currentItem()
         filename = item.text(FileHeader.Name.value)
-        selected_path = os.path.join(self.remote_cur_path, filename)
-        self.view.remoteSite.setText(selected_path)
 
-    def change_local_site(self):
-        new_path = self.view.localSite.text()
-        if not os.path.isdir(new_path):
-            self.push_response("system: 5 invalid path.")
-            return
+        local_file = os.path.join(self.local_cur_path, filename)
+        remote_file = os.path.join(self.remote_cur_path, filename)
+        size = self.remote_file_size[filename] if filename in self.remote_file_size else 0
 
-        self.local_cur_path = new_path
-        self.view.localFileView.setRootIndex(self.model.localFileModel.setRootPath(self.local_cur_path))
+        self.download_file(local_file, remote_file, size)
 
-    def thread_upload(self, resume=False):
+    def thread_upload(self, local_file, remote_file, size, resume=False):
         with threading.Lock():
-            local_file = self.model.localFileModel.filePath(self.view.localFileView.selectedIndexes()[0])
-            remote_file = os.path.join(self.remote_cur_path, local_file.split('/')[-1])
-            size = os.path.getsize(local_file)
-
             hash = local_file + '->' + remote_file + "_" + str(size)
             offset = 0
             if hash in self.running_proc:
@@ -184,6 +219,7 @@ class ClientCtrl(QtCore.QObject):
 
                 if resume:
                     offset = self.running_proc[hash].trans_size
+                    self.running_proc[hash].status = TransferStatus.Running
             else:
                 self.running_proc[hash] = TransferProcess(local_file, remote_file, download=False, total_size=size, start_time=datetime.now())
 
@@ -210,17 +246,51 @@ class ClientCtrl(QtCore.QObject):
                 self.update_signal_transfer.emit(self.running_proc[hash])
                 return buf
 
-            self.push_response(self.model.stor(local_file.split('/')[-1], do_upload))
+            self.push_response(self.model.stor(remote_file, do_upload))
             self.finish_process(hash)
 
             # update view
             self.refresh_transfer_signal.emit()
             self.refesh_remote_site()
 
-
-    def upload(self, resume=False):
-        t = threading.Thread(target=self.thread_upload, args=(resume, ))
+    def upload_file(self, local_file, remote_file, size, resume=False):
+        t = threading.Thread(target=self.thread_upload, args=(local_file, remote_file, size, resume, ))
         t.start()
+
+    def upload(self):
+        local_file = self.model.localFileModel.filePath(self.view.localFileView.selectedIndexes()[0])
+        remote_file = os.path.join(self.remote_cur_path, local_file.split('/')[-1])
+        size = os.path.getsize(local_file)
+
+        self.upload_file(local_file, remote_file, size)
+
+    def pause_transfer(self, running_proc):
+        running_proc.status = TransferStatus.Paused
+
+    def resume_transfer(self, running_proc):
+        if running_proc.download:
+            self.download_file(running_proc.local_file, running_proc.remote_file, running_proc.total_size, resume=True)
+        else:
+            self.upload_file(running_proc.local_file, running_proc.remote_file, running_proc.total_size, resume=True)
+
+    def change_local_site(self):
+        new_path = self.view.localSite.text()
+        if not os.path.isdir(new_path):
+            self.push_response("system: 5 invalid path.")
+            return
+
+        self.local_cur_path = new_path
+        self.view.localFileView.setRootIndex(self.model.localFileModel.setRootPath(self.local_cur_path))
+
+    def sync_local_path(self):
+        selected_path = self.model.localFileModel.filePath(self.view.localFileView.selectedIndexes()[0])
+        self.view.localSite.setText(selected_path)
+
+    def sync_remote_path(self):
+        item = self.view.remoteFileWidget.currentItem()
+        filename = item.text(FileHeader.Name.value)
+        selected_path = os.path.join(self.remote_cur_path, filename)
+        self.view.remoteSite.setText(selected_path)
 
     def refesh_remote_site(self):
         if self.mode == ClientMode.PORT:
@@ -238,7 +308,7 @@ class ClientCtrl(QtCore.QObject):
         self.view.update_transfer_item(proc)
 
     def refresh_transfer_status(self):
-        self.view.refresh_transfer_widget(self.running_proc)
+        self.view.refresh_transfer_widget(self.running_proc, self.pause_transfer, self.resume_transfer)
 
     def change_remote_site(self):
         self.remote_cur_path = self.view.remoteSite.text()
@@ -278,62 +348,6 @@ class ClientCtrl(QtCore.QObject):
         response = self.model.mkd(new_dir_name)
         self.push_response(response)
         self.refesh_remote_site()
-
-    def thread_download(self, resume=False):
-        with threading.Lock():
-            item = self.view.remoteFileWidget.currentItem()
-            filename = item.text(FileHeader.Name.value)
-
-            local_file = os.path.join(self.local_cur_path, filename)
-            remote_file = os.path.join(self.remote_cur_path, filename)
-            size = self.remote_file_size[filename] if filename in self.remote_file_size else 0
-
-            hash = local_file + '<-' + remote_file + "_" + str(size)
-            offset = 0
-            if hash in self.running_proc:
-                if self.running_proc[hash].status == TransferStatus.Running:
-                    self.push_response("system: 5 a transfer has been built for this transfer, please pause it first.")
-                    return
-
-                if resume:
-                    offset = self.running_proc[hash].trans_size
-            else:
-                self.running_proc[hash] = TransferProcess(local_file, remote_file, download=True, total_size=size, start_time=datetime.now())
-
-            self.refresh_transfer_signal.emit()
-
-
-            self.push_response(self.model.type('I'))
-            if self.mode == ClientMode.PORT:
-                self.push_response(self.model.port())
-            else:
-                self.push_response(self.model.pasv())
-
-            if offset > 0:
-                fp = open(local_file, 'r+')
-                fp.seek(offset)
-                self.push_response(self.model.rest(offset))
-            else:
-                fp = open(local_file, 'wb')
-
-            def record_process(buf):
-                if self.running_proc[hash].status == TransferStatus.Paused:
-                    fp.close()
-                    return
-
-                fp.write(buf)
-                self.running_proc[hash].trans_size += len(buf)
-                self.update_signal_transfer.emit(self.running_proc[hash])
-
-            self.push_response(self.model.retr(filename, record_process))
-            self.finish_process(hash)
-
-            self.refresh_transfer_signal.emit()
-
-
-    def download(self, resume=False):
-        t = threading.Thread(target=self.thread_download, args=(resume, ))
-        t.start()
 
     def remote_delete(self):
         item = self.view.remoteFileWidget.currentItem()

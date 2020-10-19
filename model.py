@@ -42,8 +42,8 @@ class ClientModel(QObject):
     # help functions to communicate with server
     def push_command(self, command, argu):
         msg = command
-        if argu is not None and len(argu) > 0:
-            msg += " " + argu
+        if argu is not None:
+            msg += " " + str(argu)
         msg += CRLF
         self.command_socket.sendall(msg.encode())
 
@@ -186,25 +186,21 @@ class ClientModel(QObject):
         response = SERVER_HEADER + self.recv_response()
         return sock, response
 
-    def retr_setup(self, filename):
+    def retr(self, filename, callback):
         if self.status != ClientStatus.PASV and self.status != ClientStatus.PORT:
-            return None, SYSTEM_HEADER + "5 RETR require PORT/PASV mode."
+            return SYSTEM_HEADER + "5 RETR require PORT/PASV mode."
 
         msg = "RETR " + filename + CRLF
-        return self.build_transfer_sock(msg)
+        sock, response = self.build_transfer_sock(msg)
 
-    def retr_transfer(self, sock, callback):
-        self.recv_data(sock, callback)
-        sock.close()
-        response = SERVER_HEADER + self.recv_response()
+        if response[0] != 5:
+            self.recv_data(sock, callback)
+            sock.close()
+            response += "\n" + SERVER_HEADER + self.recv_response()
+
         self.offset = 0
         self.status = ClientStatus.PASS
-        return response
 
-    def retr(self, filename, callback):
-        sock, response = self.retr_setup(filename)
-        if response[0] != 5:
-            response += self.retr_transfer(sock, callback)
         return response
 
     def list(self):
@@ -296,10 +292,7 @@ class ClientModel(QObject):
 
         buf = sock.recv(BUF_SIZE)
         while buf:
-            try:
-                callback(buf)
-            except:
-                return
+            callback(buf)
             buf = sock.recv(BUF_SIZE)
 
 
@@ -390,6 +383,29 @@ def test_list_dir(ftp, client):
     assert ftp_list == list
 
 
+def test_rest(ftp, client, filename, rest):
+    import filecmp
+
+    ftp.retrbinary(f"RETR {filename}", open("ftp_retr", 'wb').write, rest)
+
+    client.send_command("TYPE I")
+    client.port()
+    client.rest(rest)
+    client.retr(filename, open(filename, 'wb').write)
+
+    assert filecmp.cmp("ftp_retr", filename)
+    os.remove(filename)
+
+    client.send_command("TYPE I")
+    client.pasv()
+    client.rest(rest)
+    client.retr(filename, open(filename, 'wb').write)
+
+    assert filecmp.cmp("ftp_retr", filename)
+    os.remove(filename)
+
+    os.remove("ftp_retr")
+
 if __name__ == '__main__':
     from ftplib import FTP
     ftp = FTP()
@@ -397,14 +413,29 @@ if __name__ == '__main__':
     client = ClientModel()
 
     test_login(ftp, client)
+
+    filename = 'temp.c'
+    rest = 1
+    # ftp.retrbinary(f"RETR {filename}", open("ftp_retr", 'wb').write, rest)
+
+    client.send_command("TYPE I")
+    client.pasv()
+    client.retr(filename, open(filename, 'wb').write)
+
+    client.send_command("TYPE I")
+    client.pasv()
+    client.rest(rest)
+    client.retr(filename, open(filename, 'wb').write)
+
     # test_file_retr(ftp, client, "temp.c")
     # test_file_stor(ftp, client, "README.md")
     # test_list_dir(ftp, client)
+    # test_rest(ftp, client, "temp.c", 10)
 
-    filename = "README.md"
-    client.send_command("TYPE I")
-    client.port()
-    client.stor(filename, open(filename, 'rb').read)
+    # filename = "README.md"
+    # client.send_command("TYPE I")
+    # client.port()
+    # client.stor(filename, open(filename, 'rb').read)
 
     # ftp.retrbinary("LIST", print)
 

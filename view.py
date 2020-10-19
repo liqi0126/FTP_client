@@ -36,15 +36,7 @@ class ClientUI(QMainWindow):
         for file in files:
             self.remoteFileWidget.addTopLevelItem(QTreeWidgetItem(file))
 
-    def pause_callback(self, running_proc):
-        running_proc.status = TransferStatus.Paused
-        print('pause called')
-
-    def resume_callback(self, running_proc):
-        running_proc.status = TransferStatus.Running
-        print('resume called')
-
-    def refresh_transfer_widget(self, running_proc):
+    def refresh_transfer_widget(self, running_proc, pause_callback, resume_callback):
         self.transferWidget.clear()
 
         for proc_name in running_proc:
@@ -61,12 +53,12 @@ class ClientUI(QMainWindow):
             pauseBtn = QPushButton("pause")
             resumeBtn = QPushButton("resume")
 
-            # pauseBtn.clicked.connect(partial(self.pause_callback, proc))
-            # resumeBtn.clicked.connect(partial(self.resume_callback, proc))
+            pauseBtn.clicked.connect(partial(pause_callback, proc))
+            resumeBtn.clicked.connect(partial(resume_callback, proc))
 
             self.transferWidget.addTopLevelItem(item)
             self.transferWidget.setItemWidget(item, ProcessStatus.pauseBtn.value, pauseBtn)
-            self.transferWidget.setItemWidget(item, ProcessStatus.pauseBtn.value, resumeBtn)
+            self.transferWidget.setItemWidget(item, ProcessStatus.resumeBtn.value, resumeBtn)
 
     def update_transfer_item(self, proc):
         items = self.transferWidget.findItems(str(proc.start_time), Qt.MatchExactly, ProcessStatus.StartTime.value)
