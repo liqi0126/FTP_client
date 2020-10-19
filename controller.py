@@ -44,16 +44,19 @@ class ClientCtrl(QtCore.QObject):
         self.finished_proc = []
 
         # local path system
-        self.view.localSite.setText(self.local_cur_path)
+        # self.view.localSite.setText(self.local_cur_path)
+        self.view.localSite.setText("/Users/liqi17thu/Desktop")
         self.model.localFileModel.setRootPath(self.local_cur_path)
         self.view.localFileView.setModel(self.model.localFileModel)
+        self.view.localFileView.header().setSectionResizeMode(0, QHeaderView.Stretch)
+        for col in range(1, 4):
+            self.view.localFileView.header().setSectionResizeMode(col, QHeaderView.ResizeToContents)
 
         # signal slots
         self.view.PORT.clicked.connect(self.setPort)
         self.view.PASV.clicked.connect(self.setPasv)
         self.view.connect.clicked.connect(self.login)
         self.view.exit.clicked.connect(self.exit)
-
 
         self.view.localFileView.selectionModel().selectionChanged.connect(self.sync_local_path)
         self.view.localSiteBtn.clicked.connect(self.change_local_site)
@@ -133,18 +136,18 @@ class ClientCtrl(QtCore.QObject):
 
     def thread_download(self, local_file, remote_file, size, resume=False):
         with threading.Lock():
-            hash = local_file + '<-' + remote_file + "_" + str(size)
+            proc_hash = self.make_proc_hash(local_file, remote_file, size, download=True)
             offset = 0
-            if hash in self.running_proc:
-                if self.running_proc[hash].status == TransferStatus.Running:
+            if proc_hash in self.running_proc:
+                if self.running_proc[proc_hash].status == TransferStatus.Running:
                     self.push_response("system: 5 a transfer has been built for this transfer, please pause it first.")
                     return
 
                 if resume:
-                    offset = self.running_proc[hash].trans_size
-                    self.running_proc[hash].status = TransferStatus.Running
+                    offset = self.running_proc[proc_hash].trans_size
+                    self.running_proc[proc_hash].status = TransferStatus.Running
             else:
-                self.running_proc[hash] = TransferProcess(local_file, remote_file, download=True, total_size=size, start_time=datetime.now())
+                self.running_proc[proc_hash] = TransferProcess(local_file, remote_file, download=True, total_size=size, start_time=datetime.now())
 
             self.refresh_transfer_signal.emit()
 
@@ -162,16 +165,16 @@ class ClientCtrl(QtCore.QObject):
                 fp = open(local_file, 'wb')
 
             def do_download(buf):
-                if self.running_proc[hash].status == TransferStatus.Paused:
+                if self.running_proc[proc_hash].status != TransferStatus.Running:
                     fp.close()
                     return
 
                 fp.write(buf)
-                self.running_proc[hash].trans_size += len(buf)
-                self.update_signal_transfer.emit(self.running_proc[hash])
+                self.running_proc[proc_hash].trans_size += len(buf)
+                self.update_signal_transfer.emit(self.running_proc[proc_hash])
 
             self.push_response(self.model.retr(remote_file, do_download))
-            self.finish_process(hash)
+            self.finish_process(proc_hash)
 
             self.refresh_transfer_signal.emit()
 
@@ -203,18 +206,18 @@ class ClientCtrl(QtCore.QObject):
 
     def thread_upload(self, local_file, remote_file, size, resume=False):
         with threading.Lock():
-            hash = local_file + '->' + remote_file + "_" + str(size)
+            proc_hash = self.make_proc_hash(local_file, remote_file, size, download=False)
             offset = 0
-            if hash in self.running_proc:
-                if self.running_proc[hash].status == TransferStatus.Running:
+            if proc_hash in self.running_proc:
+                if self.running_proc[proc_hash].status == TransferStatus.Running:
                     self.push_response("system: 5 a transfer has been built for this transfer, please pause it first.")
                     return
 
                 if resume:
-                    offset = self.running_proc[hash].trans_size
-                    self.running_proc[hash].status = TransferStatus.Running
+                    offset = self.running_proc[proc_hash].trans_size
+                    self.running_proc[proc_hash].status = TransferStatus.Running
             else:
-                self.running_proc[hash] = TransferProcess(local_file, remote_file, download=False, total_size=size, start_time=datetime.now())
+                self.running_proc[proc_hash] = TransferProcess(local_file, remote_file, download=False, total_size=size, start_time=datetime.now())
 
             self.refresh_transfer_signal.emit()
 
@@ -231,16 +234,16 @@ class ClientCtrl(QtCore.QObject):
                 self.push_response(self.model.rest(offset))
 
             def do_upload(n):
-                if self.running_proc[hash].status == TransferStatus.Paused:
+                if self.running_proc[proc_hash].status != TransferStatus.Running:
                     return ''
 
                 buf = fp.read(n)
-                self.running_proc[hash].trans_size += len(buf)
-                self.update_signal_transfer.emit(self.running_proc[hash])
+                self.running_proc[proc_hash].trans_size += len(buf)
+                self.update_signal_transfer.emit(self.running_proc[proc_hash])
                 return buf
 
             self.push_response(self.model.stor(remote_file, do_upload))
-            self.finish_process(hash)
+            self.finish_process(proc_hash)
 
             # update view
             self.refresh_transfer_signal.emit()
@@ -273,6 +276,18 @@ class ClientCtrl(QtCore.QObject):
             self.download_file(running_proc.local_file, running_proc.remote_file, running_proc.total_size, resume=True)
         else:
             self.upload_file(running_proc.local_file, running_proc.remote_file, running_proc.total_size, resume=True)
+
+    def pause_or_resume_transfer(self, running_proc):
+        if running_proc.status == TransferStatus.Paused:
+            self.resume_transfer(running_proc)
+        elif running_proc.status == TransferStatus.Running:
+            self.pause_transfer(running_proc)
+        else:
+            raise RuntimeError
+
+    def cancel_transfer(self, running_proc):
+        self.cancel_process(self.make_proc_hash(running_proc.local_file, running_proc.remote_file, running_proc.total_size, running_proc.download))
+        self.refresh_transfer_signal.emit()
 
     def change_local_site(self):
         new_path = self.view.localSite.text()
@@ -313,7 +328,7 @@ class ClientCtrl(QtCore.QObject):
         self.view.update_transfer_item(proc)
 
     def refresh_transfer_status(self):
-        self.view.refresh_transfer_widget(self.running_proc, self.pause_transfer, self.resume_transfer)
+        self.view.refresh_transfer_widget(self.running_proc, self.pause_or_resume_transfer, self.cancel_transfer)
 
     def change_remote_site(self):
         if self.model.status == ClientStatus.DISCONNECT:
@@ -541,16 +556,36 @@ class ClientCtrl(QtCore.QObject):
             lists.append(self.parse_single_file_list(list))
         return lists
 
-    def finish_process(self, hash):
-        if self.running_proc[hash].status == TransferStatus.Paused:
+    def make_proc_hash(self, local_file, remote_file, size, download):
+        if download:
+            return local_file + '<-' + remote_file + "_" + str(size)
+        else:
+            return local_file + '->' + remote_file + "_" + str(size)
+
+    def cancel_process(self, proc_hash):
+        self.push_response(f"system: 5 cancel job {proc_hash}")
+        self.running_proc[proc_hash].status = TransferStatus.Canceled
+        self.running_proc[proc_hash].end_time = datetime.now()
+
+        # erase the unfinished file
+        if self.running_proc[proc_hash].download:
+            os.remove(self.running_proc[proc_hash].local_file)
+        else:
+            self.push_response(self.model.dele(self.running_proc[proc_hash].remote_file))
+        del self.running_proc[proc_hash]
+
+    def finish_process(self, proc_hash):
+        if self.running_proc[proc_hash].status == TransferStatus.Paused:
             return
 
-        if self.running_proc[hash].trans_size != self.running_proc[hash].total_size:
+        if self.running_proc[proc_hash].trans_size != self.running_proc[proc_hash].total_size:
             self.push_response("system: 5 unmatched size, something might be wrong.")
-        self.running_proc[hash].status = TransferStatus.Finished
-        self.running_proc[hash].end_time = datetime.now()
-        self.finished_proc.append(self.running_proc[hash])
-        del self.running_proc[hash]
+            self.running_proc[proc_hash].status = TransferStatus.Failed
+        else:
+            self.running_proc[proc_hash].status = TransferStatus.Finished
+        self.running_proc[proc_hash].end_time = datetime.now()
+        self.finished_proc.append(self.running_proc[proc_hash])
+        del self.running_proc[proc_hash]
 
 
 class Test(object):

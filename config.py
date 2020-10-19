@@ -25,8 +25,7 @@ class ProcessHeader(Enum):
     StartTime = 4
     EndTime = 5
     Status = 6
-    pauseBtn = 7
-    resumeBtn = 8
+    Btn = 7
 
 
 class FileHeader(Enum):
@@ -52,3 +51,5 @@ class TransferStatus(Enum):
     Running = 'Running'
     Paused = 'Paused'
     Finished = 'Finished'
+    Canceled = 'Canceled'
+    Failed = 'Failed'
