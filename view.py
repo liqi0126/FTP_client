@@ -5,8 +5,7 @@ from PyQt5.QtWidgets import QMainWindow, QTreeWidgetItem, QPushButton
 from PyQt5.uic import loadUi
 from PyQt5.QtCore import Qt
 
-from controller import TransferStatus, ProcessStatus
-
+from config import *
 
 class ClientUI(QMainWindow):
     def __init__(self):
@@ -57,13 +56,13 @@ class ClientUI(QMainWindow):
             resumeBtn.clicked.connect(partial(resume_callback, proc))
 
             self.transferWidget.addTopLevelItem(item)
-            self.transferWidget.setItemWidget(item, ProcessStatus.pauseBtn.value, pauseBtn)
-            self.transferWidget.setItemWidget(item, ProcessStatus.resumeBtn.value, resumeBtn)
+            self.transferWidget.setItemWidget(item, ProcessHeader.pauseBtn.value, pauseBtn)
+            self.transferWidget.setItemWidget(item, ProcessHeader.resumeBtn.value, resumeBtn)
 
     def update_transfer_item(self, proc):
-        items = self.transferWidget.findItems(str(proc.start_time), Qt.MatchExactly, ProcessStatus.StartTime.value)
+        items = self.transferWidget.findItems(str(proc.start_time), Qt.MatchExactly, ProcessHeader.StartTime.value)
         if len(items) > 0:
             item = items[0]
-            item.setText(ProcessStatus.Size.value, str(proc.trans_size) + "/" + str(proc.total_size))
-            item.setText(ProcessStatus.Status.value, proc.status.value)
+            item.setText(ProcessHeader.Size.value, str(proc.trans_size) + "/" + str(proc.total_size))
+            item.setText(ProcessHeader.Status.value, proc.status.value)
 

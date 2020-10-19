@@ -118,13 +118,6 @@
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="localCreateFile">
-            <property name="text">
-             <string>Create File</string>
-            </property>
-           </widget>
-          </item>
-          <item>
            <widget class="QPushButton" name="upload">
             <property name="text">
              <string>Upload</string>
@@ -181,13 +174,6 @@
            <widget class="QPushButton" name="remoteCreateDir">
             <property name="text">
              <string>Create directory</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="remoteCreateFile">
-            <property name="text">
-             <string>Create File</string>
             </property>
            </widget>
           </item>

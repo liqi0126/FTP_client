@@ -1,26 +1,11 @@
 import os
 import re
 import socket
-from enum import Enum
 
 from PyQt5.QtWidgets import QFileSystemModel
 from PyQt5.QtCore import QObject
 
-BUF_SIZE = 8192
-BACKLOG = 5
-
-CRLF = '\r\n'
-SERVER_HEADER = 'server: '
-SYSTEM_HEADER = 'system: '
-
-
-class ClientStatus(Enum):
-    DISCONNECT = 0
-    CONNECT = 1
-    USER = 2
-    PASS = 3
-    PORT = 4
-    PASV = 5
+from config import *
 
 
 class ClientModel(QObject):

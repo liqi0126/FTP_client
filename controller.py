@@ -7,44 +7,7 @@ from PyQt5 import QtCore
 from PyQt5.QtCore import QDir, pyqtSignal
 from PyQt5.QtWidgets import *
 
-from model import SYSTEM_HEADER
-
-
-class ProcessStatus(Enum):
-    Local = 0
-    Direction = 1
-    Remote = 2
-    Size = 3
-    StartTime = 4
-    EndTime = 5
-    Status = 6
-    pauseBtn = 7
-    resumeBtn = 8
-
-
-class FileHeader(Enum):
-    Name = 0
-    Size = 1
-    Type = 2
-    LastMod = 3
-    Mode = 4
-    Owner = 5
-
-
-class ClientMode(Enum):
-    PORT = 0
-    PASV = 1
-
-
-class FileType(Enum):
-    File = 'File'
-    Folder = 'Folder'
-
-
-class TransferStatus(Enum):
-    Running = 'Running'
-    Paused = 'Paused'
-    Finished = 'Finished'
+from config import *
 
 
 class TransferProcess(object):
@@ -91,6 +54,9 @@ class ClientCtrl(QtCore.QObject):
 
         self.view.localFileView.selectionModel().selectionChanged.connect(self.sync_local_path)
         self.view.localSiteBtn.clicked.connect(self.change_local_site)
+        self.view.localCreateDir.clicked.connect(self.create_local_dir)
+        self.view.localRename.clicked.connect(self.local_rename)
+        self.view.localDelete.clicked.connect(self.local_delete)
 
         self.view.remoteFileWidget.selectionModel().selectionChanged.connect(self.sync_remote_path)
         self.view.remoteRename.clicked.connect(self.remote_rename)
@@ -145,10 +111,16 @@ class ClientCtrl(QtCore.QObject):
         self.push_response(response)
         self.remote_cur_path = path
         self.view.remoteSite.setText(self.remote_cur_path)
-        self.refesh_remote_site()
+        self.refresh_remote_site()
+        self.refresh_transfer_status()
 
     def exit(self):
-        pass
+        for proc_name in self.running_proc:
+            self.running_proc[proc_name].status = TransferStatus.Paused
+
+        self.model.quit()
+        self.refresh_remote_site()
+        self.refresh_transfer_status()
 
     def thread_download(self, local_file, remote_file, size, resume=False):
         with threading.Lock():
@@ -195,11 +167,23 @@ class ClientCtrl(QtCore.QObject):
             self.refresh_transfer_signal.emit()
 
     def download_file(self, local_file, remote_file, size, resume=False):
+        if self.model.status == ClientStatus.DISCONNECT:
+            self.push_response("system: 5 you haven't connected to a server yet.")
+            return
+
         t = threading.Thread(target=self.thread_download, args=(local_file, remote_file, size, resume, ))
         t.start()
 
     def download(self):
+        if self.model.status == ClientStatus.DISCONNECT:
+            self.push_response("system: 5 you haven't connected to a server yet.")
+            return
+
         item = self.view.remoteFileWidget.currentItem()
+        if item is None:
+            self.push_response("system: 5 no file selected.")
+            return
+
         filename = item.text(FileHeader.Name.value)
 
         local_file = os.path.join(self.local_cur_path, filename)
@@ -251,13 +235,21 @@ class ClientCtrl(QtCore.QObject):
 
             # update view
             self.refresh_transfer_signal.emit()
-            self.refesh_remote_site()
+            self.refresh_remote_site()
 
     def upload_file(self, local_file, remote_file, size, resume=False):
+        if self.model.status == ClientStatus.DISCONNECT:
+            self.push_response("system: 5 you haven't connected to a server yet.")
+            return
+
         t = threading.Thread(target=self.thread_upload, args=(local_file, remote_file, size, resume, ))
         t.start()
 
     def upload(self):
+        if self.model.status == ClientStatus.DISCONNECT:
+            self.push_response("system: 5 you haven't connected to a server yet.")
+            return
+
         local_file = self.model.localFileModel.filePath(self.view.localFileView.selectedIndexes()[0])
         remote_file = os.path.join(self.remote_cur_path, local_file.split('/')[-1])
         size = os.path.getsize(local_file)
@@ -292,7 +284,11 @@ class ClientCtrl(QtCore.QObject):
         selected_path = os.path.join(self.remote_cur_path, filename)
         self.view.remoteSite.setText(selected_path)
 
-    def refesh_remote_site(self):
+    def refresh_remote_site(self):
+        if self.model.status == ClientStatus.DISCONNECT:
+            self.view.refresh_remote_widget([])
+            return
+
         if self.mode == ClientMode.PORT:
             self.push_response(self.model.port())
         else:
@@ -311,18 +307,22 @@ class ClientCtrl(QtCore.QObject):
         self.view.refresh_transfer_widget(self.running_proc, self.pause_transfer, self.resume_transfer)
 
     def change_remote_site(self):
+        if self.model.status == ClientStatus.DISCONNECT:
+            self.push_response("system: 5 you haven't connected to a server yet.")
+            return
+
         self.remote_cur_path = self.view.remoteSite.text()
 
         response = self.model.cwd(self.remote_cur_path)
         self.push_response(response)
         if self.get_status_code(response)[0] == '5':
             return
-        self.refesh_remote_site()
+        self.refresh_remote_site()
 
-    def create_remote_dir(self):
-        class RemoteDirDialog(QDialog):
+    def create_local_dir(self):
+        class MyDialog(QDialog):
             def __init__(self):
-                super(RemoteDirDialog, self).__init__()
+                super(MyDialog, self).__init__()
 
                 self.setWindowTitle("Please Enter Directory Name")
                 self.setFixedWidth(400)
@@ -340,16 +340,118 @@ class ClientCtrl(QtCore.QObject):
                 self.layout.addWidget(self.buttonBox)
                 self.setLayout(self.layout)
 
-        dlg = RemoteDirDialog()
+        dlg = MyDialog()
+        if not dlg.exec_():
+            return
+
+        selections = self.view.localFileView.selectedIndexes()
+        if len(selections) <= 0:
+            self.push_response("system: 5 no file selected.")
+            return
+
+        pathname = self.model.localFileModel.filePath(selections[0])
+
+        new_dir_name = dlg.lineEdit.text()
+        if os.path.isdir(pathname):
+            new_dir_path = os.path.join(pathname, new_dir_name)
+        else:
+            new_dir_path = os.path.join(os.path.dirname(pathname), new_dir_name)
+
+        if not os.path.exists(new_dir_path):
+            os.makedirs(new_dir_path)
+        else:
+            self.push_response(f"system: 5 {new_dir_path} already exists.")
+
+    def local_rename(self):
+        class MyDialog(QDialog):
+            def __init__(self, old_name):
+                super(MyDialog, self).__init__()
+
+                self.setWindowTitle("Please Enter New Name")
+                self.setFixedWidth(400)
+
+                QBtn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+
+                self.lineEdit = QLineEdit()
+                self.lineEdit.setText(old_name)
+
+                self.buttonBox = QDialogButtonBox(QBtn)
+                self.buttonBox.accepted.connect(self.accept)
+                self.buttonBox.rejected.connect(self.reject)
+
+                self.layout = QVBoxLayout()
+                self.layout.addWidget(self.lineEdit)
+                self.layout.addWidget(self.buttonBox)
+                self.setLayout(self.layout)
+
+        selections = self.view.localFileView.selectedIndexes()
+        if len(selections) <= 0:
+            self.push_response("system: 5 no file selected.")
+            return
+
+        filepath = self.model.localFileModel.filePath(selections[0])
+        root_path = '/'.join(filepath.split('/')[:-1])
+        old_name = filepath.split('/')[-1]
+        dlg = MyDialog(old_name)
+        if not dlg.exec_():
+            return
+
+        new_name = dlg.lineEdit.text()
+        os.rename(os.path.join(root_path, old_name), os.path.join(root_path, new_name))
+
+    def local_delete(self):
+        if self.model.status == ClientStatus.DISCONNECT:
+            self.push_response("system: 5 you haven't connected to a server yet.")
+            return
+
+        local_path = self.model.localFileModel.filePath(self.view.localFileView.selectedIndexes()[0])
+        try:
+            if os.path.isdir(local_path):
+                os.rmdir(local_path)
+            else:
+                os.remove(local_path)
+        except Exception as e:
+            self.push_response(f'system: 5 {e}')
+
+    def create_remote_dir(self):
+        if self.model.status == ClientStatus.DISCONNECT:
+            self.push_response("system: 5 you haven't connected to a server yet.")
+            return
+
+        class MyDialog(QDialog):
+            def __init__(self):
+                super(MyDialog, self).__init__()
+
+                self.setWindowTitle("Please Enter Directory Name")
+                self.setFixedWidth(400)
+
+                QBtn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+
+                self.lineEdit = QLineEdit()
+
+                self.buttonBox = QDialogButtonBox(QBtn)
+                self.buttonBox.accepted.connect(self.accept)
+                self.buttonBox.rejected.connect(self.reject)
+
+                self.layout = QVBoxLayout()
+                self.layout.addWidget(self.lineEdit)
+                self.layout.addWidget(self.buttonBox)
+                self.setLayout(self.layout)
+
+        dlg = MyDialog()
         if not dlg.exec_():
             return
 
         new_dir_name = dlg.lineEdit.text()
         response = self.model.mkd(new_dir_name)
         self.push_response(response)
-        self.refesh_remote_site()
+        self.refresh_remote_site()
 
     def remote_delete(self):
+        if self.model.status == ClientStatus.DISCONNECT:
+            self.push_response("system: 5 you haven't connected to a server yet.")
+            return
+
         item = self.view.remoteFileWidget.currentItem()
         name = item.text(FileHeader.Name.value)
         if item.text(FileHeader.Type.value) == FileType.Folder.value:
@@ -357,12 +459,16 @@ class ClientCtrl(QtCore.QObject):
         else:
             response = self.model.dele(name)
         self.push_response(response)
-        self.refesh_remote_site()
+        self.refresh_remote_site()
 
     def remote_rename(self):
-        class RemoteReNameDialog(QDialog):
+        if self.model.status == ClientStatus.DISCONNECT:
+            self.push_response("system: 5 you haven't connected to a server yet.")
+            return
+
+        class MyDialog(QDialog):
             def __init__(self, old_name):
-                super(RemoteReNameDialog, self).__init__()
+                super(MyDialog, self).__init__()
 
                 self.setWindowTitle("Please Enter New Name")
                 self.setFixedWidth(400)
@@ -384,7 +490,7 @@ class ClientCtrl(QtCore.QObject):
         item = self.view.remoteFileWidget.currentItem()
         old_name = item.text(FileHeader.Name.value)
 
-        dlg = RemoteReNameDialog(old_name)
+        dlg = MyDialog(old_name)
         if not dlg.exec_():
             return
 
@@ -392,7 +498,7 @@ class ClientCtrl(QtCore.QObject):
 
         self.push_response(self.model.rnfr(old_name))
         self.push_response(self.model.rnto(new_name))
-        self.refesh_remote_site()
+        self.refresh_remote_site()
 
     # help functions
     @staticmethod
