@@ -296,8 +296,12 @@ class ClientModel(QObject):
 
         buf = sock.recv(BUF_SIZE)
         while buf:
-            callback(buf)
+            try:
+                callback(buf)
+            except:
+                return
             buf = sock.recv(BUF_SIZE)
+
 
     @staticmethod
     def send_data(sock, callback):
@@ -315,12 +319,12 @@ class ClientModel(QObject):
 
 def test_login(ftp, client):
     # fr1 = ftp.connect("209.51.188.20", 21)
-    fr1 = ftp.connect("127.0.0.1", 20001)
+    fr1 = ftp.connect("127.0.0.1", 20000)
     fr2 = ftp.sendcmd("USER anonymous")
     fr3 = ftp.sendcmd("PASS anonymous@")
 
     # cr1 = client.connect("209.51.188.20", 21)
-    cr1 = client.connect("127.0.0.1", 20001)
+    cr1 = client.connect("127.0.0.1", 20000)
     cr2 = client.send_command("USER anonymous")
     cr3 = client.send_command("PASS anonymous@")
 
@@ -393,9 +397,14 @@ if __name__ == '__main__':
     client = ClientModel()
 
     test_login(ftp, client)
-    test_file_retr(ftp, client, "temp.c")
-    test_file_stor(ftp, client, "README.md")
-    test_list_dir(ftp, client)
+    # test_file_retr(ftp, client, "temp.c")
+    # test_file_stor(ftp, client, "README.md")
+    # test_list_dir(ftp, client)
+
+    filename = "README.md"
+    client.send_command("TYPE I")
+    client.port()
+    client.stor(filename, open(filename, 'rb').read)
 
     # ftp.retrbinary("LIST", print)
 

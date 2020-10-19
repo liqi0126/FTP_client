@@ -1,16 +1,11 @@
 from enum import Enum
+from functools import partial
 
-from PyQt5.QtWidgets import QMainWindow, QTreeWidgetItem
+from PyQt5.QtWidgets import QMainWindow, QTreeWidgetItem, QPushButton
 from PyQt5.uic import loadUi
+from PyQt5.QtCore import Qt
 
-
-class FileHeader(Enum):
-    Name = 0
-    Size = 1
-    Type = 2
-    LastMod = 3
-    Mode = 4
-    Owner = 5
+from controller import TransferStatus, ProcessStatus
 
 
 class ClientUI(QMainWindow):
@@ -28,10 +23,55 @@ class ClientUI(QMainWindow):
         self.port.setText("20002")
         self.localSite.setText("/Users/liqi17thu/Desktop")
 
-        self.remoteFileWidget.setColumnCount(6)
-        self.remoteFileWidget.setHeaderLabels(['Name', 'Size', 'Type', 'Last Modifed', 'Mode', 'Owner'])
+        remote_header = ['Name', 'Size', 'Type', 'Last Modifed', 'Mode', 'Owner']
+        self.remoteFileWidget.setColumnCount(len(remote_header))
+        self.remoteFileWidget.setHeaderLabels(remote_header)
 
-    def update_remote_size(self, files):
+        transfer_header = ['Server/Local File', 'Direction', 'Remote File', 'Size', 'Start Time', 'End Time', 'Status', '', '']
+        self.transferWidget.setColumnCount(len(transfer_header))
+        self.transferWidget.setHeaderLabels(transfer_header)
+
+    def refresh_remote_widget(self, files):
         self.remoteFileWidget.clear()
         for file in files:
             self.remoteFileWidget.addTopLevelItem(QTreeWidgetItem(file))
+
+    def pause_callback(self, running_proc):
+        running_proc.status = TransferStatus.Paused
+        print('pause called')
+
+    def resume_callback(self, running_proc):
+        running_proc.status = TransferStatus.Running
+        print('resume called')
+
+    def refresh_transfer_widget(self, running_proc):
+        self.transferWidget.clear()
+
+        for proc_name in running_proc:
+            proc = running_proc[proc_name]
+            item = QTreeWidgetItem([proc.local_file,
+                     '<<--' if proc.download else '-->>',
+                     proc.remote_file,
+                     str(proc.trans_size) + "/" + str(proc.total_size),
+                     str(proc.start_time),
+                     '----',
+                     proc.status.value
+                     ])
+
+            pauseBtn = QPushButton("pause")
+            resumeBtn = QPushButton("resume")
+
+            # pauseBtn.clicked.connect(partial(self.pause_callback, proc))
+            # resumeBtn.clicked.connect(partial(self.resume_callback, proc))
+
+            self.transferWidget.addTopLevelItem(item)
+            self.transferWidget.setItemWidget(item, ProcessStatus.pauseBtn.value, pauseBtn)
+            self.transferWidget.setItemWidget(item, ProcessStatus.pauseBtn.value, resumeBtn)
+
+    def update_transfer_item(self, proc):
+        items = self.transferWidget.findItems(str(proc.start_time), Qt.MatchExactly, ProcessStatus.StartTime.value)
+        if len(items) > 0:
+            item = items[0]
+            item.setText(ProcessStatus.Size.value, str(proc.trans_size) + "/" + str(proc.total_size))
+            item.setText(ProcessStatus.Status.value, proc.status.value)
+

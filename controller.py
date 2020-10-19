@@ -1,15 +1,34 @@
 import os
 from datetime import datetime
-from functools import partial
 from enum import Enum
 import threading
 
 from PyQt5 import QtCore
-from PyQt5.QtCore import QDir
+from PyQt5.QtCore import QDir, pyqtSignal
 from PyQt5.QtWidgets import *
 
 from model import SYSTEM_HEADER
-from view import FileHeader
+
+
+class ProcessStatus(Enum):
+    Local = 0
+    Direction = 1
+    Remote = 2
+    Size = 3
+    StartTime = 4
+    EndTime = 5
+    Status = 6
+    pauseBtn = 7
+    resumeBtn = 8
+
+
+class FileHeader(Enum):
+    Name = 0
+    Size = 1
+    Type = 2
+    LastMod = 3
+    Mode = 4
+    Owner = 5
 
 
 class ClientMode(Enum):
@@ -23,9 +42,9 @@ class FileType(Enum):
 
 
 class TransferStatus(Enum):
-    Running = 0
-    Paused = 1
-    Finished = 2
+    Running = 'Running'
+    Paused = 'Paused'
+    Finished = 'Finished'
 
 
 class TransferProcess(object):
@@ -42,6 +61,10 @@ class TransferProcess(object):
 
 
 class ClientCtrl(QtCore.QObject):
+    # signals
+    refresh_transfer_signal = pyqtSignal()
+    update_signal_transfer = pyqtSignal(TransferProcess)
+
     def __init__(self, model, view):
         super(ClientCtrl, self).__init__(view)
         self.model = model
@@ -77,6 +100,9 @@ class ClientCtrl(QtCore.QObject):
 
         self.view.upload.clicked.connect(self.upload)
         self.view.download.clicked.connect(self.download)
+
+        self.refresh_transfer_signal.connect(self.refresh_transfer_status)
+        self.update_signal_transfer.connect(self.update_single_transfer_process)
 
     def login(self):
         host = self.view.host.text()
@@ -119,7 +145,7 @@ class ClientCtrl(QtCore.QObject):
         self.push_response(response)
         self.remote_cur_path = path
         self.view.remoteSite.setText(self.remote_cur_path)
-        self.update_remote_site()
+        self.refesh_remote_site()
 
     def exit(self):
         pass
@@ -161,6 +187,8 @@ class ClientCtrl(QtCore.QObject):
             else:
                 self.running_proc[hash] = TransferProcess(local_file, remote_file, download=False, total_size=size, start_time=datetime.now())
 
+            self.refresh_transfer_signal.emit()
+
             self.push_response(self.model.type('I'))
             if self.mode == ClientMode.PORT:
                 self.push_response(self.model.port())
@@ -173,22 +201,28 @@ class ClientCtrl(QtCore.QObject):
                 fp.seek(offset)
                 self.push_response(self.model.rest(offset))
 
-            def record_process(buf):
-                fp.read(buf)
-                self.running_proc[hash].trans_size += buf
-                # TODO: update view
+            def do_upload(n):
+                if self.running_proc[hash].status == TransferStatus.Paused:
+                    return ''
 
-            self.push_response(self.model.stor(local_file.split('/')[-1], record_process))
+                buf = fp.read(n)
+                self.running_proc[hash].trans_size += len(buf)
+                self.update_signal_transfer.emit(self.running_proc[hash])
+                return buf
+
+            self.push_response(self.model.stor(local_file.split('/')[-1], do_upload))
             self.finish_process(hash)
 
             # update view
-            self.update_remote_site()
+            self.refresh_transfer_signal.emit()
+            self.refesh_remote_site()
+
 
     def upload(self, resume=False):
         t = threading.Thread(target=self.thread_upload, args=(resume, ))
         t.start()
 
-    def update_remote_site(self):
+    def refesh_remote_site(self):
         if self.mode == ClientMode.PORT:
             self.push_response(self.model.port())
         else:
@@ -198,7 +232,13 @@ class ClientCtrl(QtCore.QObject):
 
         self.remote_file_size = {}
         files = self.parse_file_list(file_list)
-        self.view.update_remote_size(files)
+        self.view.refresh_remote_widget(files)
+
+    def update_single_transfer_process(self, proc):
+        self.view.update_transfer_item(proc)
+
+    def refresh_transfer_status(self):
+        self.view.refresh_transfer_widget(self.running_proc)
 
     def change_remote_site(self):
         self.remote_cur_path = self.view.remoteSite.text()
@@ -207,7 +247,7 @@ class ClientCtrl(QtCore.QObject):
         self.push_response(response)
         if self.get_status_code(response)[0] == '5':
             return
-        self.update_remote_site()
+        self.refesh_remote_site()
 
     def create_remote_dir(self):
         class RemoteDirDialog(QDialog):
@@ -237,7 +277,7 @@ class ClientCtrl(QtCore.QObject):
         new_dir_name = dlg.lineEdit.text()
         response = self.model.mkd(new_dir_name)
         self.push_response(response)
-        self.update_remote_site()
+        self.refesh_remote_site()
 
     def thread_download(self, resume=False):
         with threading.Lock():
@@ -248,7 +288,7 @@ class ClientCtrl(QtCore.QObject):
             remote_file = os.path.join(self.remote_cur_path, filename)
             size = self.remote_file_size[filename] if filename in self.remote_file_size else 0
 
-            hash = local_file + '<-' + remote_file + "_" + size
+            hash = local_file + '<-' + remote_file + "_" + str(size)
             offset = 0
             if hash in self.running_proc:
                 if self.running_proc[hash].status == TransferStatus.Running:
@@ -260,25 +300,36 @@ class ClientCtrl(QtCore.QObject):
             else:
                 self.running_proc[hash] = TransferProcess(local_file, remote_file, download=True, total_size=size, start_time=datetime.now())
 
+            self.refresh_transfer_signal.emit()
+
+
             self.push_response(self.model.type('I'))
             if self.mode == ClientMode.PORT:
                 self.push_response(self.model.port())
             else:
                 self.push_response(self.model.pasv())
 
-            fp = open(local_file, 'wb')
-
             if offset > 0:
+                fp = open(local_file, 'r+')
                 fp.seek(offset)
                 self.push_response(self.model.rest(offset))
+            else:
+                fp = open(local_file, 'wb')
 
             def record_process(buf):
+                if self.running_proc[hash].status == TransferStatus.Paused:
+                    fp.close()
+                    return
+
                 fp.write(buf)
                 self.running_proc[hash].trans_size += len(buf)
-                # TODO: update view
+                self.update_signal_transfer.emit(self.running_proc[hash])
 
             self.push_response(self.model.retr(filename, record_process))
             self.finish_process(hash)
+
+            self.refresh_transfer_signal.emit()
+
 
     def download(self, resume=False):
         t = threading.Thread(target=self.thread_download, args=(resume, ))
@@ -292,7 +343,7 @@ class ClientCtrl(QtCore.QObject):
         else:
             response = self.model.dele(name)
         self.push_response(response)
-        self.update_remote_site()
+        self.refesh_remote_site()
 
     def remote_rename(self):
         class RemoteReNameDialog(QDialog):
@@ -327,7 +378,7 @@ class ClientCtrl(QtCore.QObject):
 
         self.push_response(self.model.rnfr(old_name))
         self.push_response(self.model.rnto(new_name))
-        self.update_remote_site()
+        self.refesh_remote_site()
 
     # help functions
     @staticmethod
@@ -362,10 +413,13 @@ class ClientCtrl(QtCore.QObject):
         return lists
 
     def finish_process(self, hash):
+        if self.running_proc[hash].status == TransferStatus.Paused:
+            return
+
         if self.running_proc[hash].trans_size != self.running_proc[hash].total_size:
-            self.push_response("system: 5 unmatched size, something might be wroing.")
+            self.push_response("system: 5 unmatched size, something might be wrong.")
         self.running_proc[hash].status = TransferStatus.Finished
-        self.running_proc[hash].status = datetime.now()
+        self.running_proc[hash].end_time = datetime.now()
         self.finished_proc.append(self.running_proc[hash])
         del self.running_proc[hash]
 
