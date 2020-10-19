@@ -49,8 +49,11 @@ class ClientCtrl(QtCore.QObject):
         self.view.localFileView.setModel(self.model.localFileModel)
 
         # signal slots
+        self.view.PORT.clicked.connect(self.setPort)
+        self.view.PASV.clicked.connect(self.setPasv)
         self.view.connect.clicked.connect(self.login)
         self.view.exit.clicked.connect(self.exit)
+
 
         self.view.localFileView.selectionModel().selectionChanged.connect(self.sync_local_path)
         self.view.localSiteBtn.clicked.connect(self.change_local_site)
@@ -69,6 +72,12 @@ class ClientCtrl(QtCore.QObject):
 
         self.refresh_transfer_signal.connect(self.refresh_transfer_status)
         self.update_signal_transfer.connect(self.update_single_transfer_process)
+
+    def setPort(self):
+        self.mode = ClientMode.PORT
+
+    def setPasv(self):
+        self.mode = ClientMode.PASV
 
     def login(self):
         host = self.view.host.text()

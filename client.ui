@@ -45,7 +45,11 @@
        </widget>
       </item>
       <item>
-       <widget class="QLineEdit" name="password"/>
+       <widget class="QLineEdit" name="password">
+        <property name="echoMode">
+         <enum>QLineEdit::Password</enum>
+        </property>
+       </widget>
       </item>
       <item>
        <widget class="QLabel" name="label_4">
@@ -56,6 +60,33 @@
       </item>
       <item>
        <widget class="QLineEdit" name="port"/>
+      </item>
+      <item>
+       <widget class="QLabel" name="label_7">
+        <property name="text">
+         <string>Mode:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QRadioButton" name="PORT">
+        <property name="text">
+         <string>PORT</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QRadioButton" name="PASV">
+        <property name="text">
+         <string>PASV</string>
+        </property>
+        <property name="checked">
+         <bool>false</bool>
+        </property>
+       </widget>
       </item>
       <item>
        <widget class="QPushButton" name="connect">
@@ -228,13 +259,6 @@
       </column>
      </widget>
     </item>
-    <item>
-     <widget class="QLabel" name="label_8">
-      <property name="text">
-       <string/>
-      </property>
-     </widget>
-    </item>
    </layout>
   </widget>
   <widget class="QMenuBar" name="menubar">
@@ -243,7 +267,7 @@
      <x>0</x>
      <y>0</y>
      <width>1256</width>
-     <height>22</height>
+     <height>26</height>
     </rect>
    </property>
   </widget>

@@ -49,8 +49,8 @@ class ClientUI(QMainWindow):
                      proc.status.value
                      ])
 
-            pauseBtn = QPushButton("pause")
-            resumeBtn = QPushButton("resume")
+            pauseBtn = QPushButton("RESUME/PAUSE")
+            resumeBtn = QPushButton("123")
 
             pauseBtn.clicked.connect(partial(pause_callback, proc))
             resumeBtn.clicked.connect(partial(resume_callback, proc))
