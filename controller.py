@@ -24,6 +24,7 @@ class TransferProcess(object):
 
 class ClientCtrl(QtCore.QObject):
     # signals
+    push_response_signal = pyqtSignal(str)
     refresh_finished_signal = pyqtSignal()
     refresh_transferring_signal = pyqtSignal()
     update_single_transfer = pyqtSignal(TransferProcess)
@@ -76,6 +77,7 @@ class ClientCtrl(QtCore.QObject):
         self.refresh_transferring_signal.connect(self.refresh_transferring_processing)
         self.refresh_finished_signal.connect(self.refresh_finished_processing)
         self.update_single_transfer.connect(self.update_single_transfer_process)
+        self.push_response_signal.connect(self.push_response)
 
     def setPort(self):
         self.mode = ClientMode.PORT
@@ -134,7 +136,8 @@ class ClientCtrl(QtCore.QObject):
 
         self.model.quit()
         self.refresh_remote_site()
-        self.refresh_transfer_status()
+        self.refresh_transferring_processing()
+        self.refresh_finished_processing()
 
     def thread_download(self, local_file, remote_file, size, resume=False):
         with threading.Lock():
@@ -142,7 +145,7 @@ class ClientCtrl(QtCore.QObject):
             offset = 0
             if proc_hash in self.running_proc:
                 if self.running_proc[proc_hash].status == TransferStatus.Running:
-                    self.push_response("system: 5 a transfer has been built for this transfer, please pause it first.")
+                    self.push_response_signal.emit("system: 5 a transfer has been built for this transfer, please pause it first.")
                     return
 
                 if resume:
@@ -153,16 +156,16 @@ class ClientCtrl(QtCore.QObject):
 
             self.refresh_transferring_signal.emit()
 
-            self.push_response(self.model.type('I'))
+            self.push_response_signal.emit(self.model.type('I'))
             if self.mode == ClientMode.PORT:
-                self.push_response(self.model.port())
+                self.push_response_signal.emit(self.model.port())
             else:
-                self.push_response(self.model.pasv())
+                self.push_response_signal.emit(self.model.pasv())
 
             if offset > 0:
                 fp = open(local_file, 'r+b')
                 fp.seek(offset)
-                self.push_response(self.model.rest(offset))
+                self.push_response_signal.emit(self.model.rest(offset))
             else:
                 fp = open(local_file, 'wb')
 
@@ -175,7 +178,7 @@ class ClientCtrl(QtCore.QObject):
                 self.running_proc[proc_hash].trans_size += len(buf)
                 self.update_single_transfer.emit(self.running_proc[proc_hash])
 
-            self.push_response(self.model.retr(remote_file, do_download))
+            self.push_response_signal.emit(self.model.retr(remote_file, do_download))
             self.finish_process(proc_hash)
 
     def download_file(self, local_file, remote_file, size, resume=False):
@@ -210,23 +213,24 @@ class ClientCtrl(QtCore.QObject):
             offset = 0
             if proc_hash in self.running_proc:
                 if self.running_proc[proc_hash].status == TransferStatus.Running:
-                    self.push_response("system: 5 a transfer has been built for this transfer, please pause it first.")
+                    self.push_response_signal.emit("system: 5 a transfer has been built for this transfer, please pause it first.")
                     return
 
                 if resume:
                     response, offset = self.model.size(self.running_proc[proc_hash].remote_file)
-                    self.push_response(response)
+                    self.push_response_signal.emit(response)
                     self.running_proc[proc_hash].status = TransferStatus.Running
+                    self.running_proc[proc_hash].trans_size = offset
             else:
                 self.running_proc[proc_hash] = TransferProcess(local_file, remote_file, download=False, total_size=size, start_time=datetime.now())
 
             self.refresh_transferring_signal.emit()
 
-            self.push_response(self.model.type('I'))
+            self.push_response_signal.emit(self.model.type('I'))
             if self.mode == ClientMode.PORT:
-                self.push_response(self.model.port())
+                self.push_response_signal.emit(self.model.port())
             else:
-                self.push_response(self.model.pasv())
+                self.push_response_signal.emit(self.model.pasv())
 
             fp = open(local_file, 'rb')
 
@@ -242,9 +246,9 @@ class ClientCtrl(QtCore.QObject):
                 self.update_single_transfer.emit(self.running_proc[proc_hash])
                 return buf
             if offset > 0:
-                self.push_response(self.model.appe(remote_file, do_upload))
+                self.push_response_signal.emit(self.model.appe(remote_file, do_upload))
             else:
-                self.push_response(self.model.stor(remote_file, do_upload))
+                self.push_response_signal.emit(self.model.stor(remote_file, do_upload))
             self.finish_process(proc_hash)
 
             # update view
@@ -288,7 +292,6 @@ class ClientCtrl(QtCore.QObject):
 
     def cancel_transfer(self, running_proc):
         self.cancel_process(self.make_proc_hash(running_proc.local_file, running_proc.remote_file, running_proc.total_size, running_proc.download))
-
 
     def change_local_site(self):
         new_path = self.view.localSite.text()

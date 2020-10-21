@@ -395,29 +395,6 @@ def test_list_dir(ftp, client):
     assert ftp_list == list
 
 
-def test_rest(ftp, client, filename, rest):
-    import filecmp
-
-    ftp.retrbinary(f"RETR {filename}", open("ftp_retr", 'wb').write, rest)
-
-    client.send_command("TYPE I")
-    client.port()
-    client.rest(rest)
-    client.retr(filename, open(filename, 'wb').write)
-
-    assert filecmp.cmp("ftp_retr", filename)
-    os.remove(filename)
-
-    client.send_command("TYPE I")
-    client.pasv()
-    client.rest(rest)
-    client.retr(filename, open(filename, 'wb').write)
-
-    assert filecmp.cmp("ftp_retr", filename)
-    os.remove(filename)
-
-    os.remove("ftp_retr")
-
 if __name__ == '__main__':
     from ftplib import FTP
     ftp = FTP()
@@ -428,29 +405,12 @@ if __name__ == '__main__':
 
     filename = 'temp.c'
     rest = 1
-    # ftp.retrbinary(f"RETR {filename}", open("ftp_retr", 'wb').write, rest)
 
-    # client.send_command("TYPE I")
-    # client.pasv()
-    # client.retr(filename, open(filename, 'wb').write)
-    #
-    # client.send_command("TYPE I")
-    # client.pasv()
-    # client.rest(rest)
-    # client.retr(filename, open(filename, 'wb').write)
-    #
     test_file_retr(ftp, client, "temp.c")
     test_file_stor(ftp, client, "README.md")
     test_list_dir(ftp, client)
-    test_rest(ftp, client, "temp.c", 10)
 
-    # filename = "README.md"
-    # client.send_command("TYPE I")
-    # client.port()
-    # client.stor(filename, open(filename, 'rb').read)
-
-    # ftp.retrbinary("LIST", print)
-
-    # pwd = client.pwd()
-    # print(pwd)
-    # print()
+    client.send_command("TYPE I")
+    client.pasv()
+    client.rest(rest)
+    client.retr(filename, open(filename, 'wb').write)

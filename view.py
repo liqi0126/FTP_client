@@ -1,8 +1,7 @@
 import humanize
 from functools import partial
 
-from PyQt5.QtWidgets import QMainWindow, QTreeWidget, QTreeWidgetItem, QPushButton, QHeaderView, QHBoxLayout, QWidget, \
-    QProgressBar
+from PyQt5.QtWidgets import QMainWindow, QTreeWidget, QTreeWidgetItem, QPushButton, QHeaderView, QHBoxLayout, QWidget
 from PyQt5.uic import loadUi
 from PyQt5.QtCore import Qt
 
@@ -16,12 +15,15 @@ class ClientUI(QMainWindow):
         self.setWindowTitle("Simple Client")
 
         # quick DEBUG
-        # self.host.setText("209.51.188.20")
-        self.host.setText("59.66.136.21")
-        self.username.setText("ssast")
-        self.password.setText("ssast")
-        self.port.setText("21")
-        # self.port.setText("20000")
+        self.host.setText("127.0.0.1")
+        self.username.setText("anonymous")
+        self.password.setText("anonymous@")
+        self.port.setText("20001")
+
+        # self.host.setText("59.66.136.21")
+        # self.username.setText("ssast")
+        # self.password.setText("ssast")
+        # self.port.setText("21")
 
         remote_header = ['Name', 'Size', 'Type', 'Last Modifed', 'Mode', 'Owner']
         self.remoteFileWidget.setColumnCount(len(remote_header))
