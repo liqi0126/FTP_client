@@ -102,7 +102,7 @@ class ClientModel(QObject):
     def size(self, file_name):
         response = self.send_command("SIZE", file_name)
         try:
-            size = int(re.search(r"\d*", response).group())
+            size = int(response.split(' ')[-1])
         except:
             size = 0
         return response, size
