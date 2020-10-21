@@ -177,12 +177,12 @@ class ClientCtrl(QtCore.QObject):
 
             def do_download(buf):
                 if self.running_proc[proc_hash].status != TransferStatus.Running:
-                    fp.close()
-                    return
+                    return False
 
                 fp.write(buf)
                 self.running_proc[proc_hash].trans_size += len(buf)
                 self.update_single_transfer.emit(self.running_proc[proc_hash])
+                return True
 
             self.push_response(self.model.retr(remote_file, do_download))
             self.finish_process(proc_hash)

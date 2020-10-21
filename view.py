@@ -21,10 +21,10 @@ class ClientUI(QMainWindow):
         self.password.setText("anonymous@")
         self.port.setText("20001")
 
-        # self.host.setText("59.66.136.21")
-        # self.username.setText("ssast")
-        # self.password.setText("ssast")
-        # self.port.setText("21")
+        self.host.setText("59.66.136.21")
+        self.username.setText("ssast")
+        self.password.setText("ssast")
+        self.port.setText("21")
 
         remote_header = ['Name', 'Size', 'Type', 'Last Modifed', 'Mode', 'Owner']
         self.remoteFileWidget.setColumnCount(len(remote_header))

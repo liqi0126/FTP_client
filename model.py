@@ -304,9 +304,9 @@ class ClientModel(QObject):
 
         buf = sock.recv(BUF_SIZE)
         while buf:
-            callback(buf)
+            if not callback(buf):
+                break
             buf = sock.recv(BUF_SIZE)
-
 
     @staticmethod
     def send_data(sock, callback):
