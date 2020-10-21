@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1256</width>
-    <height>1049</height>
+    <height>1023</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -245,18 +245,17 @@
      </layout>
     </item>
     <item>
-     <widget class="QTreeWidget" name="transferWidget">
-      <property name="maximumSize">
-       <size>
-        <width>16777215</width>
-        <height>300</height>
-       </size>
-      </property>
-      <column>
-       <property name="text">
-        <string notr="true">1</string>
-       </property>
-      </column>
+     <widget class="QTabWidget" name="tabWidget">
+      <widget class="QWidget" name="tab">
+       <attribute name="title">
+        <string>Tab 1</string>
+       </attribute>
+      </widget>
+      <widget class="QWidget" name="tab_2">
+       <attribute name="title">
+        <string>Tab 2</string>
+       </attribute>
+      </widget>
      </widget>
     </item>
    </layout>
@@ -267,7 +266,7 @@
      <x>0</x>
      <y>0</y>
      <width>1256</width>
-     <height>26</height>
+     <height>22</height>
     </rect>
    </property>
   </widget>

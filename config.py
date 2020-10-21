@@ -17,7 +17,7 @@ class ClientStatus(Enum):
     PASV = 5
 
 
-class ProcessHeader(Enum):
+class RunningProcessHeader(Enum):
     Local = 0
     Direction = 1
     Remote = 2
@@ -25,6 +25,7 @@ class ProcessHeader(Enum):
     StartTime = 4
     EndTime = 5
     Status = 6
+    # Progress = 7
     Btn = 7
 
 

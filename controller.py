@@ -1,6 +1,5 @@
 import os
 from datetime import datetime
-from enum import Enum
 import threading
 
 from PyQt5 import QtCore
@@ -25,8 +24,9 @@ class TransferProcess(object):
 
 class ClientCtrl(QtCore.QObject):
     # signals
-    refresh_transfer_signal = pyqtSignal()
-    update_signal_transfer = pyqtSignal(TransferProcess)
+    refresh_finished_signal = pyqtSignal()
+    refresh_transferring_signal = pyqtSignal()
+    update_single_transfer = pyqtSignal(TransferProcess)
 
     def __init__(self, model, view):
         super(ClientCtrl, self).__init__(view)
@@ -73,8 +73,9 @@ class ClientCtrl(QtCore.QObject):
         self.view.upload.clicked.connect(self.upload)
         self.view.download.clicked.connect(self.download)
 
-        self.refresh_transfer_signal.connect(self.refresh_transfer_status)
-        self.update_signal_transfer.connect(self.update_single_transfer_process)
+        self.refresh_transferring_signal.connect(self.refresh_transferring_processing)
+        self.refresh_finished_signal.connect(self.refresh_finished_processing)
+        self.update_single_transfer.connect(self.update_single_transfer_process)
 
     def setPort(self):
         self.mode = ClientMode.PORT
@@ -124,7 +125,8 @@ class ClientCtrl(QtCore.QObject):
         self.remote_cur_path = path
         self.view.remoteSite.setText(self.remote_cur_path)
         self.refresh_remote_site()
-        self.refresh_transfer_status()
+        self.refresh_transferring_processing()
+        # self.refresh_finished_processing()
 
     def exit(self):
         for proc_name in self.running_proc:
@@ -149,7 +151,7 @@ class ClientCtrl(QtCore.QObject):
             else:
                 self.running_proc[proc_hash] = TransferProcess(local_file, remote_file, download=True, total_size=size, start_time=datetime.now())
 
-            self.refresh_transfer_signal.emit()
+            self.refresh_transferring_signal.emit()
 
             self.push_response(self.model.type('I'))
             if self.mode == ClientMode.PORT:
@@ -171,12 +173,10 @@ class ClientCtrl(QtCore.QObject):
 
                 fp.write(buf)
                 self.running_proc[proc_hash].trans_size += len(buf)
-                self.update_signal_transfer.emit(self.running_proc[proc_hash])
+                self.update_single_transfer.emit(self.running_proc[proc_hash])
 
             self.push_response(self.model.retr(remote_file, do_download))
             self.finish_process(proc_hash)
-
-            self.refresh_transfer_signal.emit()
 
     def download_file(self, local_file, remote_file, size, resume=False):
         if self.model.status == ClientStatus.DISCONNECT:
@@ -214,12 +214,13 @@ class ClientCtrl(QtCore.QObject):
                     return
 
                 if resume:
-                    offset = self.running_proc[proc_hash].trans_size
+                    response, offset = self.model.size(self.running_proc[proc_hash].remote_file)
+                    self.push_response(response)
                     self.running_proc[proc_hash].status = TransferStatus.Running
             else:
                 self.running_proc[proc_hash] = TransferProcess(local_file, remote_file, download=False, total_size=size, start_time=datetime.now())
 
-            self.refresh_transfer_signal.emit()
+            self.refresh_transferring_signal.emit()
 
             self.push_response(self.model.type('I'))
             if self.mode == ClientMode.PORT:
@@ -231,7 +232,6 @@ class ClientCtrl(QtCore.QObject):
 
             if offset > 0:
                 fp.seek(offset)
-                self.push_response(self.model.rest(offset))
 
             def do_upload(n):
                 if self.running_proc[proc_hash].status != TransferStatus.Running:
@@ -239,14 +239,15 @@ class ClientCtrl(QtCore.QObject):
 
                 buf = fp.read(n)
                 self.running_proc[proc_hash].trans_size += len(buf)
-                self.update_signal_transfer.emit(self.running_proc[proc_hash])
+                self.update_single_transfer.emit(self.running_proc[proc_hash])
                 return buf
-
-            self.push_response(self.model.stor(remote_file, do_upload))
+            if offset > 0:
+                self.push_response(self.model.appe(remote_file, do_upload))
+            else:
+                self.push_response(self.model.stor(remote_file, do_upload))
             self.finish_process(proc_hash)
 
             # update view
-            self.refresh_transfer_signal.emit()
             self.refresh_remote_site()
 
     def upload_file(self, local_file, remote_file, size, resume=False):
@@ -287,7 +288,7 @@ class ClientCtrl(QtCore.QObject):
 
     def cancel_transfer(self, running_proc):
         self.cancel_process(self.make_proc_hash(running_proc.local_file, running_proc.remote_file, running_proc.total_size, running_proc.download))
-        self.refresh_transfer_signal.emit()
+
 
     def change_local_site(self):
         new_path = self.view.localSite.text()
@@ -327,7 +328,10 @@ class ClientCtrl(QtCore.QObject):
     def update_single_transfer_process(self, proc):
         self.view.update_transfer_item(proc)
 
-    def refresh_transfer_status(self):
+    def refresh_finished_processing(self):
+        self.view.refresh_finished_widget(self.finished_proc)
+
+    def refresh_transferring_processing(self):
         self.view.refresh_transfer_widget(self.running_proc, self.pause_or_resume_transfer, self.cancel_transfer)
 
     def change_remote_site(self):
@@ -572,7 +576,11 @@ class ClientCtrl(QtCore.QObject):
             os.remove(self.running_proc[proc_hash].local_file)
         else:
             self.push_response(self.model.dele(self.running_proc[proc_hash].remote_file))
+        self.finished_proc.append(self.running_proc[proc_hash])
         del self.running_proc[proc_hash]
+
+        self.refresh_transferring_signal.emit()
+        self.refresh_finished_signal.emit()
 
     def finish_process(self, proc_hash):
         if self.running_proc[proc_hash].status == TransferStatus.Paused:
@@ -586,6 +594,9 @@ class ClientCtrl(QtCore.QObject):
         self.running_proc[proc_hash].end_time = datetime.now()
         self.finished_proc.append(self.running_proc[proc_hash])
         del self.running_proc[proc_hash]
+
+        self.refresh_transferring_signal.emit()
+        self.refresh_finished_signal.emit()
 
 
 class Test(object):

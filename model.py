@@ -96,12 +96,23 @@ class ClientModel(QObject):
     def rmd(self, dir_name):
         return self.send_command("RMD", dir_name)
 
-    def dele(self, filename):
-        return self.send_command("DELE", filename)
+    def dele(self, file_name):
+        return self.send_command("DELE", file_name)
+
+    def size(self, file_name):
+        response = self.send_command("SIZE", file_name)
+        try:
+            size = int(re.search(r"\d*", response).group())
+        except:
+            size = 0
+        return response, size
 
     def pwd(self):
         response = self.send_command("PWD")
-        path = re.search(r"\".*\"", response).group()[1:-1]
+        try:
+            path = re.search(r"\".*\"", response).group()[1:-1]
+        except:
+            path = ""
         return response, path
 
     def cwd(self, dir_name):
@@ -223,6 +234,22 @@ class ClientModel(QObject):
         self.status = ClientStatus.PASS
         return response
 
+    def appe(self, filename, callback=None):
+        if self.status != ClientStatus.PASV and self.status != ClientStatus.PORT:
+            return SYSTEM_HEADER + "5 STOR require PORT/PASV mode."
+
+        msg = "APPE " + filename + CRLF
+        sock, response = self.build_transfer_sock(msg)
+
+        if response[0] != '5':
+            self.send_data(sock, callback)
+            sock.close()
+            response += "\n" + SERVER_HEADER + self.recv_response()
+
+        self.offset = 0
+        self.status = ClientStatus.PASS
+        return response
+
     @staticmethod
     def get_status_code(response):
         return response.split(' ')[1]
@@ -297,12 +324,12 @@ class ClientModel(QObject):
 
 def test_login(ftp, client):
     # fr1 = ftp.connect("209.51.188.20", 21)
-    fr1 = ftp.connect("127.0.0.1", 20000)
+    fr1 = ftp.connect("127.0.0.1", 20001)
     fr2 = ftp.sendcmd("USER anonymous")
     fr3 = ftp.sendcmd("PASS anonymous@")
 
     # cr1 = client.connect("209.51.188.20", 21)
-    cr1 = client.connect("127.0.0.1", 20000)
+    cr1 = client.connect("127.0.0.1", 20001)
     cr2 = client.send_command("USER anonymous")
     cr3 = client.send_command("PASS anonymous@")
 
@@ -403,19 +430,19 @@ if __name__ == '__main__':
     rest = 1
     # ftp.retrbinary(f"RETR {filename}", open("ftp_retr", 'wb').write, rest)
 
-    client.send_command("TYPE I")
-    client.pasv()
-    client.retr(filename, open(filename, 'wb').write)
-
-    client.send_command("TYPE I")
-    client.pasv()
-    client.rest(rest)
-    client.retr(filename, open(filename, 'wb').write)
-
-    # test_file_retr(ftp, client, "temp.c")
-    # test_file_stor(ftp, client, "README.md")
-    # test_list_dir(ftp, client)
-    # test_rest(ftp, client, "temp.c", 10)
+    # client.send_command("TYPE I")
+    # client.pasv()
+    # client.retr(filename, open(filename, 'wb').write)
+    #
+    # client.send_command("TYPE I")
+    # client.pasv()
+    # client.rest(rest)
+    # client.retr(filename, open(filename, 'wb').write)
+    #
+    test_file_retr(ftp, client, "temp.c")
+    test_file_stor(ftp, client, "README.md")
+    test_list_dir(ftp, client)
+    test_rest(ftp, client, "temp.c", 10)
 
     # filename = "README.md"
     # client.send_command("TYPE I")
