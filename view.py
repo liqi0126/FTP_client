@@ -1,3 +1,4 @@
+import threading
 import humanize
 from functools import partial
 
@@ -66,67 +67,62 @@ class ClientUI(QMainWindow):
 
     def refresh_transfer_widget(self, running_proc, pause_resume_callback, cancel_callback):
         self.transferWidget.clear()
+        with threading.Lock():
+            for proc_name in running_proc:
+                proc = running_proc[proc_name]
+                item = QTreeWidgetItem([proc.local_file,
+                                        '<<--' if proc.download else '-->>',
+                                        proc.remote_file,
+                                        str(proc.trans_size) + "/" + str(proc.total_size),
+                                        # proc.start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                                        str(proc.start_time),
+                                        '----',
+                                        proc.status.value,
+                                        ])
 
-        for proc_name in running_proc:
-            proc = running_proc[proc_name]
-            item = QTreeWidgetItem([proc.local_file,
-                                    '<<--' if proc.download else '-->>',
-                                    proc.remote_file,
-                                    str(proc.trans_size) + "/" + str(proc.total_size),
-                                    # proc.start_time.strftime("%Y-%m-%d %H:%M:%S"),
-                                    str(proc.start_time),
-                                    '----',
-                                    proc.status.value,
-                                    ])
+                btnWidget = QWidget()
+                layout = QHBoxLayout()
+                prBtn = QPushButton("pause/resume")
+                cancelBtn = QPushButton("cancel")
+                layout.addWidget(prBtn)
+                layout.addWidget(cancelBtn)
+                prBtn.clicked.connect(partial(pause_resume_callback, proc))
+                cancelBtn.clicked.connect(partial(cancel_callback, proc))
+                btnWidget.setLayout(layout)
 
-            btnWidget = QWidget()
-            layout = QHBoxLayout()
-            prBtn = QPushButton("pause/resume")
-            cancelBtn = QPushButton("cancel")
-            layout.addWidget(prBtn)
-            layout.addWidget(cancelBtn)
-            prBtn.clicked.connect(partial(pause_resume_callback, proc))
-            cancelBtn.clicked.connect(partial(cancel_callback, proc))
-            btnWidget.setLayout(layout)
+                # pbar = QProgressBar()
+                # pbar.setValue(100 * proc.trans_size / proc.total_size)
 
-            # pbar = QProgressBar()
-            # pbar.setValue(100 * proc.trans_size / proc.total_size)
-
-            self.transferWidget.addTopLevelItem(item)
-            # self.transferWidget.setItemWidget(item, RunningProcessHeader.Progress.value, pbar)
-            self.transferWidget.setItemWidget(item, RunningProcessHeader.Btn.value, btnWidget)
+                self.transferWidget.addTopLevelItem(item)
+                # self.transferWidget.setItemWidget(item, RunningProcessHeader.Progress.value, pbar)
+                self.transferWidget.setItemWidget(item, RunningProcessHeader.Btn.value, btnWidget)
 
     def update_transfer_item(self, proc):
         items = self.transferWidget.findItems(str(proc.start_time), Qt.MatchExactly,
                                               RunningProcessHeader.StartTime.value)
         for item in items:
-            # TODO: check correctness
             item.setText(RunningProcessHeader.Size.value, str(proc.trans_size) + "/" + str(proc.total_size))
             item.setText(RunningProcessHeader.Status.value, proc.status.value)
 
-            # pbar = QProgressBar()
-            # pbar.setValue(100 * proc.trans_size / proc.total_size)
-            # self.transferWidget.setItemWidget(item, RunningProcessHeader.Progress.value, pbar)
-
     def refresh_finished_widget(self, finished_proc):
         self.finishedWidget.clear()
+        with threading.Lock():
+            for proc in finished_proc:
+                if proc.trans_size < proc.total_size:
+                    size_str = humanize.naturalsize(proc.trans_size) + "/" + humanize.naturalsize(proc.total_size)
+                else:
+                    size_str = humanize.naturalsize(proc.total_size)
 
-        for proc in finished_proc:
-            if proc.trans_size < proc.total_size:
-                size_str = humanize.naturalsize(proc.trans_size) + "/" + humanize.naturalsize(proc.total_size)
-            else:
-                size_str = humanize.naturalsize(proc.total_size)
+                item = QTreeWidgetItem([proc.local_file,
+                                        '<<--' if proc.download else '-->>',
+                                        proc.remote_file,
+                                        size_str,
+                                        # proc.start_time.strftime("%Y-%m-%d %H:%M:%S"),
+                                        # proc.end_time.strftime("%Y-%m-%d %H:%M:%S"),
+                                        str(proc.start_time),
+                                        str(proc.end_time),
+                                        humanize.naturaldelta(proc.end_time - proc.start_time),
+                                        proc.status.value,
+                                        ])
 
-            item = QTreeWidgetItem([proc.local_file,
-                                    '<<--' if proc.download else '-->>',
-                                    proc.remote_file,
-                                    size_str,
-                                    # proc.start_time.strftime("%Y-%m-%d %H:%M:%S"),
-                                    # proc.end_time.strftime("%Y-%m-%d %H:%M:%S"),
-                                    str(proc.start_time),
-                                    str(proc.end_time),
-                                    humanize.naturaldelta(proc.end_time - proc.start_time),
-                                    proc.status.value,
-                                    ])
-
-            self.finishedWidget.addTopLevelItem(item)
+                self.finishedWidget.addTopLevelItem(item)

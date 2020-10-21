@@ -152,7 +152,9 @@ class ClientCtrl(QtCore.QObject):
                     return
 
                 if resume:
-                    offset = self.running_proc[proc_hash].trans_size
+                    if os.path.isfile(local_file):
+                        offset = os.path.getsize(local_file)
+                        self.running_proc[proc_hash].trans_size = offset
                     self.running_proc[proc_hash].status = TransferStatus.Running
             else:
                 self.running_proc[proc_hash] = TransferProcess(local_file, remote_file, download=True, total_size=size,
@@ -178,8 +180,7 @@ class ClientCtrl(QtCore.QObject):
                     fp.close()
                     return
 
-                if not fp.closed:
-                    fp.write(buf)
+                fp.write(buf)
                 self.running_proc[proc_hash].trans_size += len(buf)
                 self.update_single_transfer.emit(self.running_proc[proc_hash])
 
